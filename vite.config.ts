@@ -5,6 +5,7 @@ import { defineConfig } from "vite"
 
 // https://vite.dev/config/
 export default defineConfig({
+  base: "/proto-v2-adsmanagy/",
   plugins: [react(), tailwindcss()],
   resolve: {
     alias: {
