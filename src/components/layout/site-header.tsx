@@ -1,15 +1,20 @@
 import {
   IconBell,
   IconChevronDown,
+  IconCrown,
   IconLogout,
   IconMoon,
   IconPlugConnected,
   IconSettings,
   IconSun,
+  IconWallet,
 } from "@tabler/icons-react"
 
+import {
+  useDataSources,
+  type DataSource,
+} from "@/components/data-sources-provider"
 import { useTheme } from "@/components/theme-provider"
-import { useDataSources, type DataSource } from "@/components/data-sources-provider"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import {
@@ -64,6 +69,25 @@ function DataSourcesMenu() {
   )
 }
 
+const TARIFF = "Pro"
+const BALANCE = "85 $"
+
+function BillingStatus() {
+  return (
+    <div className="hidden items-center gap-2.5 rounded-md border bg-card px-2.5 py-1 sm:flex">
+      <div className="flex items-center gap-1.5">
+        <IconCrown className="size-4 text-amber-500" />
+        <span className="text-sm font-semibold">{TARIFF}</span>
+      </div>
+      <Separator orientation="vertical" className="h-4!" />
+      <div className="flex items-center gap-1.5">
+        <IconWallet className="size-4 text-muted-foreground" />
+        <span className="text-sm font-semibold tabular-nums">{BALANCE}</span>
+      </div>
+    </div>
+  )
+}
+
 export function SiteHeader() {
   const { theme, setTheme } = useTheme()
   const isDark = theme === "dark"
@@ -74,6 +98,7 @@ export function SiteHeader() {
       <Separator orientation="vertical" className="mr-1 h-5!" />
 
       <div className="ml-auto flex items-center gap-2">
+        <BillingStatus />
         <DataSourcesMenu />
 
         <Button
