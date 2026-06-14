@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
+import lpCrmLogo from "@/assets/lp-crm.png"
 import {
   CRM_LOGO_COLORS,
   CRM_LOGO_LETTERS,
@@ -29,6 +30,19 @@ import {
 } from "./types"
 
 function CrmLogo({ type, className }: { type: CrmType; className?: string }) {
+  if (type === "LP CRM") {
+    return (
+      <div
+        className={cn(
+          "flex shrink-0 items-center justify-center overflow-hidden rounded-md",
+          className
+        )}
+      >
+        <img src={lpCrmLogo} alt="LP CRM" className="h-full w-full object-contain" />
+      </div>
+    )
+  }
+
   return (
     <div
       className={cn(
@@ -54,16 +68,23 @@ function AddCrmDialog({
   const [selected, setSelected] = useState<CrmType | null>(null)
   const [subdomain, setSubdomain] = useState("")
   const [apiKey, setApiKey] = useState("")
+  const [acceptedOrderStatus, setAcceptedOrderStatus] = useState("")
+  const [completedOrderStatus, setCompletedOrderStatus] = useState("")
 
   const reset = () => {
     setSelected(null)
     setSubdomain("")
     setApiKey("")
+    setAcceptedOrderStatus("")
+    setCompletedOrderStatus("")
   }
 
   const canSubmit =
     selected === "LP CRM"
-      ? subdomain.trim() !== "" && apiKey.trim() !== ""
+      ? subdomain.trim() !== "" &&
+        apiKey.trim() !== "" &&
+        Number(acceptedOrderStatus) > 0 &&
+        Number(completedOrderStatus) > 0
       : selected !== null
 
   return (
@@ -135,6 +156,36 @@ function AddCrmDialog({
                 </span>
               </div>
             </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-medium text-muted-foreground">
+                  Статус прийнятих
+                </label>
+                <Input
+                  type="number"
+                  min={1}
+                  inputMode="numeric"
+                  value={acceptedOrderStatus}
+                  onChange={(e) =>
+                    setAcceptedOrderStatus(e.target.value.replace(/\D/g, ""))
+                  }
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-medium text-muted-foreground">
+                  Статус завершених
+                </label>
+                <Input
+                  type="number"
+                  min={1}
+                  inputMode="numeric"
+                  value={completedOrderStatus}
+                  onChange={(e) =>
+                    setCompletedOrderStatus(e.target.value.replace(/\D/g, ""))
+                  }
+                />
+              </div>
+            </div>
           </div>
         )}
         {selected === "Sales Drive" && (
@@ -163,6 +214,9 @@ function AddCrmDialog({
                   selected === "LP CRM"
                     ? `https://${subdomain}.lp-crm.com`
                     : "Підключено",
+                ...(selected === "LP CRM"
+                  ? { acceptedOrderStatus, completedOrderStatus }
+                  : {}),
               })
               onOpenChange(false)
             }}

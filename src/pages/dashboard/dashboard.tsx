@@ -7,8 +7,10 @@ import {
   IconChevronDown,
   IconCircleCheck,
   IconCoin,
+  IconCrown,
   IconDatabase,
   IconHeadset,
+  IconLock,
   IconTarget,
   IconTrendingUp,
   IconUserPlus,
@@ -22,12 +24,9 @@ import { Bar, BarChart, LabelList, XAxis, YAxis } from "recharts"
 import sideStepsImage from "@/assets/side_steps.png"
 import { useDataSources } from "@/components/data-sources-provider"
 import { useIntegrations } from "@/components/integrations-provider"
-import { PricingGrid } from "@/features/billing/plans"
-import { AdAccountsStep } from "@/features/integrations/ad-accounts-step"
-import { CallCentersStep } from "@/features/integrations/call-centers-step"
-import { CrmStep } from "@/features/integrations/crm-step"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
+import { BillingPeriodToggle } from "@/components/ui/billing-period-toggle"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -66,6 +65,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { PLAN_FEATURES, PricingGrid } from "@/features/billing/plans"
+import { AdAccountsStep } from "@/features/integrations/ad-accounts-step"
+import { CallCentersStep } from "@/features/integrations/call-centers-step"
+import { CrmStep } from "@/features/integrations/crm-step"
 import { cn } from "@/lib/utils"
 import {
   avatarColor,
@@ -180,6 +183,57 @@ function NotConnectedState({
   )
 }
 
+// overlay shown on top of a blurred stat card. when the account has no active
+// plan it always wins and asks the user to pick a tariff; otherwise it shows the
+// usual "data source not connected" prompt.
+function LockedOverlay({
+  noPlan,
+  icon,
+  title,
+  description,
+  actionLabel,
+  actionIcon,
+  actionOpensPricing = false,
+}: {
+  noPlan: boolean
+  icon: Icon
+  title: string
+  description: string
+  actionLabel?: string
+  actionIcon?: Icon
+  actionOpensPricing?: boolean
+}) {
+  const [pricingOpen, setPricingOpen] = useState(false)
+  const openPricing = () => setPricingOpen(true)
+
+  return (
+    <>
+      <div className="absolute inset-0 flex items-center justify-center bg-white/60 p-4 dark:bg-black/60">
+        {noPlan ? (
+          <NotConnectedState
+            icon={IconCrown}
+            title="Немає активного тарифу"
+            description="Підключіть тариф, щоб бачити дані аналітики"
+            actionLabel="Підключіть тариф"
+            actionIcon={IconCrown}
+            onAction={openPricing}
+          />
+        ) : (
+          <NotConnectedState
+            icon={icon}
+            title={title}
+            description={description}
+            actionLabel={actionLabel}
+            actionIcon={actionIcon}
+            onAction={actionOpensPricing ? openPricing : undefined}
+          />
+        )}
+      </div>
+      <PricingDialog open={pricingOpen} onOpenChange={setPricingOpen} />
+    </>
+  )
+}
+
 const DATE_PRESETS = ["Сьогодні", "7 днів", "30 днів", "Цей місяць"]
 
 function DateRangePicker() {
@@ -213,24 +267,22 @@ const ONBOARDING_STEPS = [
   { title: "Додайте рекламний кабінет" },
   { title: "Підключіть CRM" },
   { title: "Додайте колцентри" },
+  { title: "Оберіть тариф" },
 ] as const
 
 function SetupStepper({ step }: { step: number }) {
   return (
-    <div className="flex items-center py-7">
+    <div className="flex items-center justify-center py-7">
       {ONBOARDING_STEPS.map((s, i) => {
         const index = i + 1
         const done = index < step
         const active = index === step
         return (
-          <div
-            key={s.title}
-            className="flex flex-1 items-center last:flex-none"
-          >
-            <div className="flex items-center gap-2.5">
+          <div key={s.title} className="flex items-center last:flex-none">
+            <div className="flex items-center gap-2">
               <div
                 className={cn(
-                  "flex size-7 shrink-0 items-center justify-center rounded-full text-xs font-bold transition-all duration-300",
+                  "flex size-6 shrink-0 items-center justify-center rounded-full text-xs font-bold transition-all duration-300",
                   done &&
                     "scale-100 bg-neutral-900 text-white dark:bg-white dark:text-neutral-900",
                   active &&
@@ -239,7 +291,7 @@ function SetupStepper({ step }: { step: number }) {
                 )}
               >
                 {done ? (
-                  <IconCircleCheck className="size-4 animate-in duration-300 zoom-in-50" />
+                  <IconCircleCheck className="size-3.5 animate-in duration-300 zoom-in-50" />
                 ) : (
                   index
                 )}
@@ -254,7 +306,7 @@ function SetupStepper({ step }: { step: number }) {
               </div>
             </div>
             {index < ONBOARDING_STEPS.length && (
-              <div className="mx-3 h-px flex-1 overflow-hidden bg-border">
+              <div className="mx-2 h-px w-12 flex-none overflow-hidden bg-border">
                 <div
                   className={cn(
                     "h-full bg-neutral-900 transition-transform duration-500 ease-out dark:bg-white",
@@ -288,10 +340,26 @@ function OnboardingCallout({ onDismiss }: { onDismiss: () => void }) {
     setStep(next)
   }
 
+  const [billingPeriod, setBillingPeriod] = useState<"monthly" | "yearly">(
+    "yearly"
+  )
+
+  const [confirmFreeOpen, setConfirmFreeOpen] = useState(false)
+
+  const handleSelectPlan = (planId: string) => {
+    if (planId === "free") {
+      setConfirmFreeOpen(true)
+    } else {
+      // for paid plans, close the onboarding (or handle purchase flow)
+      setSetupOpen(false)
+    }
+  }
+
   const stepDone = [
     Object.values(connectedAccounts).some((accs) => accs && accs.length > 0),
     connectedCrms.length > 0,
     callCenters.length > 0,
+    false,
   ]
   const anyDone = stepDone.some(Boolean)
   const firstIncomplete = stepDone.findIndex((done) => !done)
@@ -318,7 +386,7 @@ function OnboardingCallout({ onDismiss }: { onDismiss: () => void }) {
         <div className="order-1 flex flex-col gap-4 p-5">
           <div>
             <h2 className="text-base font-bold tracking-tight">
-              Пройдіть 3 прості кроки для початку
+              Пройдіть 4 прості кроки для початку
             </h2>
             <p className="mt-0.5 text-xs text-muted-foreground">
               Підключіть джерела даних - і отримайте повну аналітику ваших
@@ -372,42 +440,66 @@ function OnboardingCallout({ onDismiss }: { onDismiss: () => void }) {
         }}
         disablePointerDismissal
       >
-        <DialogContent className="max-w-4xl">
+        <DialogContent className="h-[85vh] max-h-[90vh] max-w-7xl">
           <DialogHeader>
-            <DialogTitle>Налаштування за 3 кроки</DialogTitle>
+            <DialogTitle>Налаштування за 4 кроки</DialogTitle>
             <DialogDescription>
-              Підключіть джерела даних, щоб бачити повну аналітику кампаній
+              Підключіть джерела даних та оберіть тариф, щоб бачити повну
+              аналітику
             </DialogDescription>
           </DialogHeader>
           <SetupStepper step={step} />
-          <div className="mt-2 min-h-[280px] overflow-hidden">
-            <div
-              key={step}
-              className={cn(
-                "animate-in delay-150 duration-300 fill-mode-backwards fade-in",
-                direction === "forward"
-                  ? "slide-in-from-right-8"
-                  : "slide-in-from-left-8"
-              )}
-            >
-              {step === 1 && (
-                <AdAccountsStep
-                  connectedAccounts={connectedAccounts}
-                  setConnectedAccounts={setConnectedAccounts}
-                />
-              )}
-              {step === 2 && (
-                <CrmStep
-                  connectedCrms={connectedCrms}
-                  setConnectedCrms={setConnectedCrms}
-                />
-              )}
-              {step === 3 && (
-                <CallCentersStep
-                  callCenters={callCenters}
-                  setCallCenters={setCallCenters}
-                />
-              )}
+          <div className="mt-2 min-h-[280px] flex-1 overflow-y-auto">
+            <div className="flex min-h-full items-start justify-center px-1 py-6">
+              <div className={cn(step === 4 ? "w-full" : "w-full max-w-2xl")}>
+                <div
+                  key={step}
+                  className={cn(
+                    "animate-in delay-150 duration-300 fill-mode-backwards fade-in",
+                    direction === "forward"
+                      ? "slide-in-from-right-8"
+                      : "slide-in-from-left-8"
+                  )}
+                >
+                  {step === 1 && (
+                    <AdAccountsStep
+                      connectedAccounts={connectedAccounts}
+                      setConnectedAccounts={setConnectedAccounts}
+                    />
+                  )}
+                  {step === 2 && (
+                    <CrmStep
+                      connectedCrms={connectedCrms}
+                      setConnectedCrms={setConnectedCrms}
+                    />
+                  )}
+                  {step === 3 && (
+                    <CallCentersStep
+                      callCenters={callCenters}
+                      setCallCenters={setCallCenters}
+                    />
+                  )}
+                  {step === 4 && (
+                    <div className="space-y-4">
+                      <div className="flex flex-col items-center">
+                        <div className="">
+                          <BillingPeriodToggle
+                            value={billingPeriod}
+                            onChange={setBillingPeriod}
+                          />
+                        </div>
+                      </div>
+                      <PricingGrid
+                        billingPeriod={billingPeriod}
+                        currentPlanId="free"
+                        allowSelectCurrent
+                        onSelect={handleSelectPlan}
+                        freeCurrentLabel="Залишитись на безкоштовному"
+                      />
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
           <DialogFooter className="sm:justify-between">
@@ -447,6 +539,91 @@ function OnboardingCallout({ onDismiss }: { onDismiss: () => void }) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <Dialog open={confirmFreeOpen} onOpenChange={setConfirmFreeOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Підтвердження</DialogTitle>
+            <DialogDescription>
+              Ви впевнені, що хочете залишитися на безкоштовному тарифі?
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="sm:justify-end">
+            <Button
+              variant="secondary"
+              onClick={() => setConfirmFreeOpen(false)}
+            >
+              Вибрати план
+            </Button>
+            <Button
+              className="bg-neutral-900 text-white hover:bg-neutral-800 dark:bg-white dark:text-neutral-900 dark:hover:bg-neutral-200"
+              onClick={() => {
+                setConfirmFreeOpen(false)
+                setSetupOpen(false)
+              }}
+            >
+              Так
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </Card>
+  )
+}
+
+// shown instead of the onboarding stepper when the account has no active plan.
+// unlike the onboarding callout, it cannot be dismissed.
+function NoPlanCallout() {
+  const [pricingOpen, setPricingOpen] = useState(false)
+
+  return (
+    <Card className="relative gap-0 overflow-hidden border-primary/20 py-0 shadow-sm [--card-spacing:0px]">
+      {/* subtle theme-tinted gradient backdrop + soft glows (adapts to light/dark) */}
+      <div className="absolute inset-0 bg-gradient-to-br from-primary/[0.06] via-transparent to-primary/[0.12]" />
+      <div className="pointer-events-none absolute -top-20 -right-12 size-60 rounded-full bg-primary/10 blur-3xl" />
+      <div className="pointer-events-none absolute -bottom-24 left-1/4 size-56 rounded-full bg-primary/5 blur-3xl" />
+
+      <CardContent className="relative flex flex-col gap-6 p-6 md:flex-row md:items-center md:justify-between">
+        <div className="flex flex-col gap-3">
+          <span className="inline-flex w-fit items-center gap-1.5 rounded-full bg-amber-500/15 px-2.5 py-1 text-[11px] font-semibold text-amber-600 ring-1 ring-amber-500/25 ring-inset dark:text-amber-400">
+            <IconLock className="size-3.5" />
+            Тариф не активний
+          </span>
+          <div className="flex items-center gap-2.5">
+            <IconCrown className="size-6 text-amber-500" />
+            <h2 className="text-xl font-bold tracking-tight">
+              Розблокуйте повну аналітику
+            </h2>
+          </div>
+          <p className="max-w-xl text-sm text-muted-foreground">
+            Оберіть тариф, щоб бачити ліди, ROI, топ баєрів та колцентрів у
+            реальному часі — без обмежень.
+          </p>
+          <div className="mt-1 flex flex-wrap gap-2">
+            {PLAN_FEATURES.map((feature) => (
+              <span
+                key={feature.key}
+                className="inline-flex items-center gap-1.5 rounded-lg border bg-card/60 px-2.5 py-1 text-xs font-medium"
+              >
+                <feature.icon className="size-3.5 text-muted-foreground" />
+                {feature.label}
+              </span>
+            ))}
+          </div>
+        </div>
+
+        <div className="flex shrink-0 flex-col items-start gap-2 md:items-end">
+          <Button
+            size="lg"
+            className="gap-1.5 bg-neutral-900 font-semibold text-white shadow-sm hover:bg-neutral-800 dark:bg-white dark:text-neutral-900 dark:hover:bg-neutral-200"
+            onClick={() => setPricingOpen(true)}
+          >
+            <IconCrown className="size-4" />
+            Обрати тариф
+          </Button>
+          <span className="text-xs text-muted-foreground">від $19 / місяць</span>
+        </div>
+      </CardContent>
+      <PricingDialog open={pricingOpen} onOpenChange={setPricingOpen} />
     </Card>
   )
 }
@@ -485,14 +662,27 @@ function KpiNoData() {
   )
 }
 
+function KpiNoPlan() {
+  return (
+    <div className="mt-2 flex items-center gap-2">
+      <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-amber-500/15 text-amber-600 dark:text-amber-400">
+        <IconLock className="size-3.5" />
+      </span>
+      <span className="text-xs font-medium text-muted-foreground">
+        Потрібен тариф
+      </span>
+    </div>
+  )
+}
+
 function KpiCards() {
-  const { sources } = useDataSources()
+  const { sources, noPlan } = useDataSources()
 
   return (
     <div className="grid grid-cols-2 gap-3.5 md:grid-cols-3 xl:grid-cols-6">
       {KPIS.map((kpi) => {
         const KpiIcon = KPI_ICONS[kpi.key]
-        const connected = sources[KPI_REQUIRED_SOURCE[kpi.key]]
+        const connected = !noPlan && sources[KPI_REQUIRED_SOURCE[kpi.key]]
         const m = kpi.value.match(/^([\d\s.,]+)(.*)$/)
         const num = m ? m[1] : kpi.value
         const suffix = m ? m[2] : ""
@@ -525,6 +715,8 @@ function KpiCards() {
                     )}
                   />
                 </div>
+              ) : noPlan ? (
+                <KpiNoPlan />
               ) : (
                 <KpiNoData />
               )}
@@ -550,9 +742,9 @@ const chartConfig = {
 } satisfies ChartConfig
 
 function LeadsChart() {
-  const { sources } = useDataSources()
+  const { sources, noPlan } = useDataSources()
 
-  if (!sources.crm) {
+  if (noPlan || !sources.crm) {
     return (
       <Card className="relative gap-0 py-3.5 [--card-spacing:18px]">
         <CardHeader className={cn(headerClass, "pb-3.5")}>
@@ -606,13 +798,12 @@ function LeadsChart() {
               </BarChart>
             </ChartContainer>
           </div>
-          <div className="absolute inset-0 flex items-center justify-center bg-white/60 p-4 dark:bg-black/60">
-            <NotConnectedState
-              icon={IconDatabase}
-              title="CRM не підключена"
-              description="Підключіть CRM, щоб бачити динаміку лідів"
-            />
-          </div>
+          <LockedOverlay
+            noPlan={noPlan}
+            icon={IconDatabase}
+            title="CRM не підключена"
+            description="Підключіть CRM, щоб бачити динаміку лідів"
+          />
         </CardContent>
       </Card>
     )
@@ -684,20 +875,18 @@ function PricingDialog({
             Більше акаунтів, учасників команди та інтеграцій на платних тарифах
           </DialogDescription>
         </DialogHeader>
-        <PricingGrid />
+        <PricingGrid size="sm" />
       </DialogContent>
     </Dialog>
   )
 }
 
 function TopBuyers() {
-  const { sources } = useDataSources()
-  const [pricingOpen, setPricingOpen] = useState(false)
+  const { sources, noPlan } = useDataSources()
 
-  if (!sources.crm) {
+  if (noPlan || !sources.crm) {
     return (
-      <>
-        <Card className="relative gap-0 py-3.5 [--card-spacing:18px]">
+      <Card className="relative gap-0 py-3.5 [--card-spacing:18px]">
           <CardHeader className={cn(headerClass, "pb-3.5")}>
             <CardTitle className={titleClass}>Топ баєрів</CardTitle>
             <CardDescription className={descClass}>
@@ -736,19 +925,16 @@ function TopBuyers() {
                 </div>
               </ScrollArea>
             </div>
-            <div className="absolute inset-0 flex items-center justify-center bg-white/60 p-4 dark:bg-black/60">
-              <NotConnectedState
-                icon={IconDatabase}
-                title="Користувачів не додано"
-                description="Додайте учасників команди, щоб бачити їх рейтинг"
-                actionLabel="Додати учасників"
-                onAction={() => setPricingOpen(true)}
-              />
-            </div>
+            <LockedOverlay
+              noPlan={noPlan}
+              icon={IconDatabase}
+              title="Користувачів не додано"
+              description="Додайте учасників команди, щоб бачити їх рейтинг"
+              actionLabel="Додати учасників"
+              actionOpensPricing
+            />
           </CardContent>
         </Card>
-        <PricingDialog open={pricingOpen} onOpenChange={setPricingOpen} />
-      </>
     )
   }
 
@@ -814,10 +1000,10 @@ function TopBuyers() {
 }
 
 function TopCallCenters() {
-  const { sources } = useDataSources()
+  const { sources, noPlan } = useDataSources()
   const max = Math.max(...CALL_CENTERS.map((c) => c.avgMargin))
 
-  if (!sources.callCenter) {
+  if (noPlan || !sources.callCenter) {
     return (
       <Card className="relative gap-0 py-3.5 [--card-spacing:18px]">
         <CardHeader className={cn(headerClass, "pb-3.5")}>
@@ -856,13 +1042,12 @@ function TopCallCenters() {
               </div>
             ))}
           </div>
-          <div className="absolute inset-0 flex items-center justify-center bg-white/60 p-4 dark:bg-black/60">
-            <NotConnectedState
-              icon={IconHeadset}
-              title="Колцентр не підключений"
-              description="Підключіть колцентр, щоб бачити маржу та допродажі"
-            />
-          </div>
+          <LockedOverlay
+            noPlan={noPlan}
+            icon={IconHeadset}
+            title="Колцентр не підключений"
+            description="Підключіть колцентр, щоб бачити маржу та допродажі"
+          />
         </CardContent>
       </Card>
     )
@@ -908,9 +1093,9 @@ function TopCallCenters() {
 }
 
 function TopProducts() {
-  const { sources } = useDataSources()
+  const { sources, noPlan } = useDataSources()
 
-  if (!sources.crm) {
+  if (noPlan || !sources.crm) {
     return (
       <Card className="relative gap-0 py-0 [--card-spacing:18px]">
         <CardHeader className={cn(headerClass, "py-3.5")}>
@@ -972,13 +1157,12 @@ function TopProducts() {
               </Table>
             </ScrollArea>
           </div>
-          <div className="absolute inset-0 flex items-center justify-center bg-white/60 p-4 dark:bg-black/60">
-            <NotConnectedState
-              icon={IconDatabase}
-              title="CRM не підключена"
-              description="Підключіть CRM, щоб бачити топ товарів по продажу"
-            />
-          </div>
+          <LockedOverlay
+            noPlan={noPlan}
+            icon={IconDatabase}
+            title="CRM не підключена"
+            description="Підключіть CRM, щоб бачити топ товарів по продажу"
+          />
         </CardContent>
       </Card>
     )
@@ -1050,11 +1234,16 @@ function TopProducts() {
 
 export function DashboardPage() {
   const [showOnboarding, setShowOnboarding] = useState(true)
+  const { noPlan } = useDataSources()
 
   return (
     <div className="mx-auto flex w-full max-w-[1340px] flex-col gap-4 p-4 md:p-6">
-      {showOnboarding && (
-        <OnboardingCallout onDismiss={() => setShowOnboarding(false)} />
+      {noPlan ? (
+        <NoPlanCallout />
+      ) : (
+        showOnboarding && (
+          <OnboardingCallout onDismiss={() => setShowOnboarding(false)} />
+        )
       )}
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-bold tracking-tight">Огляд</h1>

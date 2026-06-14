@@ -92,6 +92,8 @@ export type CrmType = (typeof CRM_TYPES)[number]
 export type ConnectedCrm = {
   type: CrmType
   label: string
+  acceptedOrderStatus?: string
+  completedOrderStatus?: string
 }
 
 export const CRM_LOGO_COLORS: Record<CrmType, string> = {

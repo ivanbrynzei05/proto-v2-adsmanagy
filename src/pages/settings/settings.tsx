@@ -16,6 +16,7 @@ import { useState } from "react"
 import { useIntegrations } from "@/components/integrations-provider"
 import { useTheme } from "@/components/theme-provider"
 import { Badge } from "@/components/ui/badge"
+import { BillingPeriodToggle } from "@/components/ui/billing-period-toggle"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -341,6 +342,9 @@ function BillingSection() {
 }
 
 function PlansSection() {
+  const [billingPeriod, setBillingPeriod] = useState<"monthly" | "yearly">(
+    "yearly"
+  )
   return (
     <Card>
       <CardHeader className="border-b">
@@ -352,7 +356,17 @@ function PlansSection() {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <PricingGrid currentPlanId="pro" />
+        <div className="mb-4 flex justify-center">
+          <BillingPeriodToggle
+            value={billingPeriod}
+            onChange={setBillingPeriod}
+          />
+        </div>
+        <PricingGrid
+          currentPlanId="free"
+          billingPeriod={billingPeriod}
+          size="sm"
+        />
       </CardContent>
     </Card>
   )

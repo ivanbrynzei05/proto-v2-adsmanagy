@@ -8,9 +8,12 @@ export type DataSourcesState = Record<DataSource, boolean>
 type DataSourcesContextValue = {
   sources: DataSourcesState
   toggleSource: (source: DataSource) => void
+  noPlan: boolean
+  toggleNoPlan: () => void
 }
 
 const STORAGE_KEY = "data-sources"
+const NO_PLAN_KEY = "data-sources-no-plan"
 
 // New users start with nothing connected.
 const DEFAULT_STATE: DataSourcesState = {
@@ -35,6 +38,14 @@ function readStoredState(): DataSourcesState {
   }
 }
 
+function readStoredNoPlan(): boolean {
+  try {
+    return localStorage.getItem(NO_PLAN_KEY) === "true"
+  } catch {
+    return false
+  }
+}
+
 export function DataSourcesProvider({
   children,
 }: {
@@ -43,6 +54,7 @@ export function DataSourcesProvider({
   const [sources, setSources] = React.useState<DataSourcesState>(() =>
     readStoredState()
   )
+  const [noPlan, setNoPlan] = React.useState<boolean>(() => readStoredNoPlan())
 
   const toggleSource = React.useCallback((source: DataSource) => {
     setSources((prev) => {
@@ -52,9 +64,17 @@ export function DataSourcesProvider({
     })
   }, [])
 
+  const toggleNoPlan = React.useCallback(() => {
+    setNoPlan((prev) => {
+      const next = !prev
+      localStorage.setItem(NO_PLAN_KEY, String(next))
+      return next
+    })
+  }, [])
+
   const value = React.useMemo(
-    () => ({ sources, toggleSource }),
-    [sources, toggleSource]
+    () => ({ sources, toggleSource, noPlan, toggleNoPlan }),
+    [sources, toggleSource, noPlan, toggleNoPlan]
   )
 
   return (

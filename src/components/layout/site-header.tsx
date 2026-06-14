@@ -37,7 +37,7 @@ const DATA_SOURCE_OPTIONS: { value: DataSource; label: string }[] = [
 ]
 
 function DataSourcesMenu() {
-  const { sources, toggleSource } = useDataSources()
+  const { sources, toggleSource, noPlan, toggleNoPlan } = useDataSources()
 
   return (
     <DropdownMenu>
@@ -63,6 +63,15 @@ function DataSourcesMenu() {
               {option.label}
             </DropdownMenuCheckboxItem>
           ))}
+          <DropdownMenuSeparator />
+          <DropdownMenuLabel>Стан акаунту</DropdownMenuLabel>
+          <DropdownMenuCheckboxItem
+            checked={noPlan}
+            onCheckedChange={toggleNoPlan}
+            closeOnClick={false}
+          >
+            Без тарифа
+          </DropdownMenuCheckboxItem>
         </DropdownMenuGroup>
       </DropdownMenuContent>
     </DropdownMenu>
