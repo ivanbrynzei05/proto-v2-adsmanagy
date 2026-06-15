@@ -19,6 +19,7 @@ import {
   type Icon,
 } from "@tabler/icons-react"
 import { useState } from "react"
+import { useNavigate } from "react-router-dom"
 import { Bar, BarChart, LabelList, XAxis, YAxis } from "recharts"
 
 import sideStepsImage from "@/assets/side_steps.png"
@@ -26,7 +27,6 @@ import { useDataSources } from "@/components/data-sources-provider"
 import { useIntegrations } from "@/components/integrations-provider"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
-import { BillingPeriodToggle } from "@/components/ui/billing-period-toggle"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -45,7 +45,6 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
@@ -66,9 +65,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { PLAN_FEATURES, PricingGrid } from "@/features/billing/plans"
-import { AdAccountsStep } from "@/features/integrations/ad-accounts-step"
-import { CallCentersStep } from "@/features/integrations/call-centers-step"
-import { CrmStep } from "@/features/integrations/crm-step"
+import { ONBOARDING_STEPS } from "@/pages/onboarding/onboarding"
 import { cn } from "@/lib/utils"
 import {
   avatarColor,
@@ -263,97 +260,9 @@ function DateRangePicker() {
   )
 }
 
-const ONBOARDING_STEPS = [
-  { title: "Додайте рекламний кабінет" },
-  { title: "Підключіть CRM" },
-  { title: "Додайте колцентри" },
-  { title: "Оберіть тариф" },
-] as const
-
-function SetupStepper({ step }: { step: number }) {
-  return (
-    <div className="flex items-center justify-center py-7">
-      {ONBOARDING_STEPS.map((s, i) => {
-        const index = i + 1
-        const done = index < step
-        const active = index === step
-        return (
-          <div key={s.title} className="flex items-center last:flex-none">
-            <div className="flex items-center gap-2">
-              <div
-                className={cn(
-                  "flex size-6 shrink-0 items-center justify-center rounded-full text-xs font-bold transition-all duration-300",
-                  done &&
-                    "scale-100 bg-neutral-900 text-white dark:bg-white dark:text-neutral-900",
-                  active &&
-                    "scale-110 border-2 border-neutral-900 text-neutral-900 dark:border-white dark:text-white",
-                  !done && !active && "scale-100 border text-muted-foreground"
-                )}
-              >
-                {done ? (
-                  <IconCircleCheck className="size-3.5 animate-in duration-300 zoom-in-50" />
-                ) : (
-                  index
-                )}
-              </div>
-              <div
-                className={cn(
-                  "hidden text-sm font-medium transition-colors duration-300 sm:block",
-                  active ? "text-foreground" : "text-muted-foreground"
-                )}
-              >
-                {s.title}
-              </div>
-            </div>
-            {index < ONBOARDING_STEPS.length && (
-              <div className="mx-2 h-px w-12 flex-none overflow-hidden bg-border">
-                <div
-                  className={cn(
-                    "h-full bg-neutral-900 transition-transform duration-500 ease-out dark:bg-white",
-                    done ? "translate-x-0" : "-translate-x-full"
-                  )}
-                />
-              </div>
-            )}
-          </div>
-        )
-      })}
-    </div>
-  )
-}
-
 function OnboardingCallout({ onDismiss }: { onDismiss: () => void }) {
-  const [setupOpen, setSetupOpen] = useState(false)
-  const [step, setStep] = useState(1)
-  const [direction, setDirection] = useState<"forward" | "back">("forward")
-  const {
-    connectedAccounts,
-    setConnectedAccounts,
-    connectedCrms,
-    setConnectedCrms,
-    callCenters,
-    setCallCenters,
-  } = useIntegrations()
-
-  const goToStep = (next: number) => {
-    setDirection(next > step ? "forward" : "back")
-    setStep(next)
-  }
-
-  const [billingPeriod, setBillingPeriod] = useState<"monthly" | "yearly">(
-    "yearly"
-  )
-
-  const [confirmFreeOpen, setConfirmFreeOpen] = useState(false)
-
-  const handleSelectPlan = (planId: string) => {
-    if (planId === "free") {
-      setConfirmFreeOpen(true)
-    } else {
-      // for paid plans, close the onboarding (or handle purchase flow)
-      setSetupOpen(false)
-    }
-  }
+  const navigate = useNavigate()
+  const { connectedAccounts, connectedCrms, callCenters } = useIntegrations()
 
   const stepDone = [
     Object.values(connectedAccounts).some((accs) => accs && accs.length > 0),
@@ -418,154 +327,17 @@ function OnboardingCallout({ onDismiss }: { onDismiss: () => void }) {
           </div>
           <Button
             className="w-fit gap-1.5 bg-neutral-900 text-white hover:bg-neutral-800 dark:bg-white dark:text-neutral-900 dark:hover:bg-neutral-200"
-            onClick={() => {
-              setStep(firstIncomplete === -1 ? 1 : firstIncomplete + 1)
-              setDirection("forward")
-              setSetupOpen(true)
-            }}
+            onClick={() =>
+              navigate("/onboarding", {
+                state: { step: firstIncomplete === -1 ? 1 : firstIncomplete + 1 },
+              })
+            }
           >
             <IconArrowRight className="size-4" />
             {anyDone ? "Доналаштувати" : "Почати налаштування"}
           </Button>
         </div>
       </CardContent>
-      <Dialog
-        open={setupOpen}
-        onOpenChange={(open) => {
-          setSetupOpen(open)
-          if (!open) {
-            setStep(1)
-            setDirection("forward")
-          }
-        }}
-        disablePointerDismissal
-      >
-        <DialogContent className="h-[85vh] max-h-[90vh] max-w-7xl">
-          <DialogHeader>
-            <DialogTitle>Налаштування за 4 кроки</DialogTitle>
-            <DialogDescription>
-              Підключіть джерела даних та оберіть тариф, щоб бачити повну
-              аналітику
-            </DialogDescription>
-          </DialogHeader>
-          <SetupStepper step={step} />
-          <div className="mt-2 min-h-[280px] flex-1 overflow-y-auto">
-            <div className="flex min-h-full items-start justify-center px-1 py-6">
-              <div className={cn(step === 4 ? "w-full" : "w-full max-w-2xl")}>
-                <div
-                  key={step}
-                  className={cn(
-                    "animate-in delay-150 duration-300 fill-mode-backwards fade-in",
-                    direction === "forward"
-                      ? "slide-in-from-right-8"
-                      : "slide-in-from-left-8"
-                  )}
-                >
-                  {step === 1 && (
-                    <AdAccountsStep
-                      connectedAccounts={connectedAccounts}
-                      setConnectedAccounts={setConnectedAccounts}
-                    />
-                  )}
-                  {step === 2 && (
-                    <CrmStep
-                      connectedCrms={connectedCrms}
-                      setConnectedCrms={setConnectedCrms}
-                    />
-                  )}
-                  {step === 3 && (
-                    <CallCentersStep
-                      callCenters={callCenters}
-                      setCallCenters={setCallCenters}
-                    />
-                  )}
-                  {step === 4 && (
-                    <div className="space-y-4">
-                      <div className="flex flex-col items-center">
-                        <div className="">
-                          <BillingPeriodToggle
-                            value={billingPeriod}
-                            onChange={setBillingPeriod}
-                          />
-                        </div>
-                      </div>
-                      <PricingGrid
-                        billingPeriod={billingPeriod}
-                        currentPlanId="free"
-                        allowSelectCurrent
-                        onSelect={handleSelectPlan}
-                        freeCurrentLabel="Залишитись на безкоштовному"
-                      />
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-          <DialogFooter className="sm:justify-between">
-            <Button
-              variant="ghost"
-              className="text-muted-foreground"
-              onClick={() => {
-                if (step < ONBOARDING_STEPS.length) {
-                  goToStep(step + 1)
-                } else {
-                  setSetupOpen(false)
-                }
-              }}
-            >
-              Пропустити
-            </Button>
-            <div className="flex gap-2">
-              {step > 1 && (
-                <Button variant="secondary" onClick={() => goToStep(step - 1)}>
-                  Назад
-                </Button>
-              )}
-              <Button
-                className="gap-1.5 bg-neutral-900 text-white hover:bg-neutral-800 dark:bg-white dark:text-neutral-900 dark:hover:bg-neutral-200"
-                onClick={() => {
-                  if (step < ONBOARDING_STEPS.length) {
-                    goToStep(step + 1)
-                  } else {
-                    setSetupOpen(false)
-                  }
-                }}
-              >
-                Далі
-                <IconArrowRight className="size-4" />
-              </Button>
-            </div>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-      <Dialog open={confirmFreeOpen} onOpenChange={setConfirmFreeOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Підтвердження</DialogTitle>
-            <DialogDescription>
-              Ви впевнені, що хочете залишитися на безкоштовному тарифі?
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter className="sm:justify-end">
-            <Button
-              variant="secondary"
-              onClick={() => setConfirmFreeOpen(false)}
-            >
-              Вибрати план
-            </Button>
-            <Button
-              className="bg-neutral-900 text-white hover:bg-neutral-800 dark:bg-white dark:text-neutral-900 dark:hover:bg-neutral-200"
-              onClick={() => {
-                setConfirmFreeOpen(false)
-                setSetupOpen(false)
-              }}
-            >
-              Так
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </Card>
   )
 }

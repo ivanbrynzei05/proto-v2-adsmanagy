@@ -1,7 +1,6 @@
 /* eslint-disable react-refresh/only-export-components */
 import {
   IconAd,
-  IconArrowUpRight,
   IconBolt,
   IconCrown,
   IconDatabase,
@@ -34,39 +33,50 @@ type PlanTheme = {
   button: string
   badge?: string
   badgeLabel?: string
+  glow?: string
 }
 
-// Soft pastel tints per plan; the "popular" plan gets the lime hero treatment.
+// Soft gradient tints per plan; the "popular" plan gets the lime hero treatment
+// and "max" gets a premium gold treatment — both get a glow + badge.
 const PLAN_THEMES: Record<string, PlanTheme> = {
   free: {
-    card: "border-border bg-card",
-    iconBox: "bg-muted text-muted-foreground",
+    card: "border-border bg-gradient-to-b from-muted/40 to-card",
+    iconBox:
+      "bg-gradient-to-br from-neutral-200 to-neutral-300 text-neutral-600 dark:from-neutral-700 dark:to-neutral-800 dark:text-neutral-300",
     value: "",
     // empty → falls back to the default secondary (grey) button styling
     button: "",
   },
   solo: {
-    card: "border-emerald-100 bg-emerald-50/50 dark:border-emerald-400/20 dark:bg-emerald-950/20",
-    iconBox: "bg-emerald-500 text-white",
+    card: "border-emerald-200/70 bg-gradient-to-b from-emerald-50 to-card dark:border-emerald-400/20 dark:from-emerald-950/30 dark:to-card",
+    iconBox:
+      "bg-gradient-to-br from-emerald-400 to-emerald-600 text-white shadow-sm shadow-emerald-500/30",
     value: "text-emerald-700 dark:text-emerald-300",
     button:
       "bg-neutral-900 text-white hover:bg-neutral-800 dark:bg-white dark:text-neutral-900 dark:hover:bg-neutral-200",
+    glow: "bg-emerald-300/30",
   },
   pro: {
-    card: "border-lime-300 bg-lime-50/70 ring-1 ring-lime-300/60 dark:border-lime-400/30 dark:bg-lime-950/20 dark:ring-lime-400/20",
-    iconBox: "bg-lime-500 text-white",
+    card: "border-2 border-lime-300 bg-gradient-to-b from-lime-50 to-card shadow-[0_12px_40px_-15px_rgba(132,204,22,0.45)] dark:border-lime-400/40 dark:from-lime-950/30 dark:to-card dark:shadow-[0_12px_40px_-15px_rgba(132,204,22,0.2)]",
+    iconBox:
+      "bg-gradient-to-br from-lime-400 to-lime-600 text-white shadow-sm shadow-lime-500/30",
     value: "text-lime-700 dark:text-lime-300",
     button:
-      "bg-lime-500 text-white hover:bg-lime-600 dark:bg-lime-500 dark:text-white dark:hover:bg-lime-600",
+      "bg-lime-500 text-white shadow-sm shadow-lime-500/30 hover:bg-lime-600 dark:bg-lime-500 dark:text-white dark:hover:bg-lime-600",
     badge: "bg-lime-500 text-white",
     badgeLabel: "Популярний",
+    glow: "bg-lime-300/40",
   },
   max: {
-    card: "border-amber-200 bg-amber-50/60 dark:border-amber-400/25 dark:bg-amber-950/20",
-    iconBox: "bg-gradient-to-br from-amber-400 to-amber-600 text-white",
+    card: "border-2 border-amber-200 bg-gradient-to-b from-amber-50 to-card shadow-[0_12px_40px_-15px_rgba(245,158,11,0.4)] dark:border-amber-400/30 dark:from-amber-950/30 dark:to-card dark:shadow-[0_12px_40px_-15px_rgba(245,158,11,0.2)]",
+    iconBox:
+      "bg-gradient-to-br from-amber-400 to-amber-600 text-white shadow-sm shadow-amber-500/30",
     value: "text-amber-700 dark:text-amber-300",
     button:
-      "bg-neutral-900 text-white hover:bg-neutral-800 dark:bg-white dark:text-neutral-900 dark:hover:bg-neutral-200",
+      "bg-gradient-to-r from-amber-500 to-amber-600 text-white shadow-sm shadow-amber-500/30 hover:from-amber-600 hover:to-amber-700",
+    badge: "bg-gradient-to-r from-amber-400 to-amber-600 text-white",
+    badgeLabel: "Преміум",
+    glow: "bg-amber-300/40",
   },
 }
 
@@ -88,7 +98,7 @@ export const PRICING_PLANS = [
     price: "$19",
     priceYearly: "$190",
     period: "місяць",
-    note: "Можна розширити кількість акаунтів",
+    note: "Можна розширити",
     limits: { adAccounts: 5, members: 0, crm: 1, callCenters: 1 },
   },
   {
@@ -101,6 +111,7 @@ export const PRICING_PLANS = [
     discountPercent: 26,
     priceYearly: "$290",
     period: "місяць",
+    note: "Можна розширити",
     limits: { adAccounts: 30, members: 3, crm: 2, callCenters: 2 },
   },
   {
@@ -111,6 +122,7 @@ export const PRICING_PLANS = [
     price: "$79",
     priceYearly: "$790",
     period: "місяць",
+    note: "Можна розширити",
     limits: { adAccounts: 70, members: 10, crm: 5, callCenters: 5 },
   },
 ] satisfies {
@@ -208,15 +220,24 @@ export function PricingGrid({
           <div
             key={plan.id}
             className={cn(
-              "relative flex flex-col rounded-2xl border shadow-sm transition-all duration-200 hover:-translate-y-1 hover:shadow-lg",
+              "relative flex flex-col overflow-hidden rounded-2xl border shadow-sm transition-all duration-200 hover:-translate-y-1 hover:shadow-lg",
               compact ? "gap-3 p-4" : "gap-4 p-5",
               theme.card
             )}
           >
+            {theme.glow && (
+              <div
+                aria-hidden
+                className={cn(
+                  "pointer-events-none absolute -top-12 -right-12 size-32 rounded-full blur-3xl",
+                  theme.glow
+                )}
+              />
+            )}
             {theme.badge && (
               <Badge
                 className={cn(
-                  "absolute -top-2.5 right-4 gap-1 border-transparent font-semibold shadow-sm",
+                  "absolute top-3 right-3 z-10 gap-1 border-transparent font-semibold shadow-sm",
                   theme.badge
                 )}
               >
@@ -224,27 +245,27 @@ export function PricingGrid({
                 {theme.badgeLabel}
               </Badge>
             )}
-            <div className="flex items-center gap-2.5">
+            <div className="relative flex items-center gap-2.5">
               <div
                 className={cn(
-                  "flex shrink-0 items-center justify-center rounded-xl",
-                  compact ? "size-8" : "size-9",
+                  "flex shrink-0 items-center justify-center rounded-2xl ring-1 ring-black/5 dark:ring-white/10",
+                  compact ? "size-9" : "size-10",
                   theme.iconBox
                 )}
               >
-                <plan.icon className={compact ? "size-3.5" : "size-4"} />
+                <plan.icon className={compact ? "size-4" : "size-5"} />
               </div>
               <div>
                 <p className="text-sm font-bold">{plan.name}</p>
                 <p className="text-xs text-muted-foreground">{plan.tagline}</p>
               </div>
             </div>
-            <div className="flex flex-col gap-1.5">
+            <div className="relative flex flex-col gap-1.5">
               <div className="flex items-end gap-1.5">
                 <span
                   className={cn(
-                    "font-extrabold tracking-tight",
-                    compact ? "text-2xl" : "text-3xl"
+                    "font-extrabold tracking-tighter",
+                    compact ? "text-2xl" : "text-4xl"
                   )}
                 >
                   {displayPrice}
@@ -270,7 +291,7 @@ export function PricingGrid({
             </div>
             <div
               className={cn(
-                "flex flex-col border-t border-border/60",
+                "relative flex flex-col border-t border-border/60",
                 compact ? "gap-2 pt-3" : "gap-3 pt-4"
               )}
             >
@@ -281,7 +302,7 @@ export function PricingGrid({
                   <div key={feature.key} className="flex items-center gap-2.5">
                     <span
                       className={cn(
-                        "flex shrink-0 items-center justify-center rounded-lg",
+                        "flex shrink-0 items-center justify-center rounded-full",
                         compact ? "size-6" : "size-7",
                         available
                           ? "bg-emerald-500/12 text-emerald-600 dark:text-emerald-400"
@@ -315,10 +336,7 @@ export function PricingGrid({
                 )
               })}
               {plan.note && (
-                <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
-                  <IconArrowUpRight className="mt-px size-3.5 shrink-0" />
-                  {plan.note}
-                </p>
+                <p className="text-xs text-muted-foreground">{plan.note}</p>
               )}
             </div>
             <Button
@@ -328,7 +346,7 @@ export function PricingGrid({
               }
               onClick={() => onSelect?.(plan.id)}
               className={cn(
-                "mt-auto w-full gap-1.5 font-semibold",
+                "relative mt-auto w-full gap-1.5 rounded-xl font-semibold",
                 compact ? "h-9 text-xs" : "h-11",
                 theme.button
               )}
