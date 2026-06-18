@@ -7,6 +7,7 @@ import { IntegrationsProvider } from "@/components/integrations-provider"
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { CampaignsPage } from "@/pages/campaigns/campaigns"
+import { ConnectAdsPage } from "@/pages/connect/connect-ads"
 import { DashboardPage } from "@/pages/dashboard/dashboard"
 import { OnboardingPage } from "@/pages/onboarding/onboarding"
 import { SettingsPage } from "@/pages/settings/settings"
@@ -35,6 +36,7 @@ export function App() {
               <Route path="/settings" element={<SettingsPage />} />
             </Route>
             <Route path="/onboarding" element={<OnboardingPage />} />
+            <Route path="/connect/ads/:token" element={<ConnectAdsPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </IntegrationsProvider>

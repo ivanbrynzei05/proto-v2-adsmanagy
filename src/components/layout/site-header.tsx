@@ -2,6 +2,7 @@ import {
   IconBell,
   IconChevronDown,
   IconCrown,
+  IconExternalLink,
   IconLogout,
   IconMoon,
   IconPlugConnected,
@@ -9,6 +10,7 @@ import {
   IconSun,
   IconWallet,
 } from "@tabler/icons-react"
+import { useNavigate } from "react-router-dom"
 
 import {
   useDataSources,
@@ -29,6 +31,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Separator } from "@/components/ui/separator"
 import { SidebarTrigger } from "@/components/ui/sidebar"
+import { CONNECT_ADS_DEMO_STATES } from "@/pages/connect/demo-states"
 
 const DATA_SOURCE_OPTIONS: { value: DataSource; label: string }[] = [
   { value: "crm", label: "CRM" },
@@ -38,6 +41,7 @@ const DATA_SOURCE_OPTIONS: { value: DataSource; label: string }[] = [
 
 function DataSourcesMenu() {
   const { sources, toggleSource, noPlan, toggleNoPlan } = useDataSources()
+  const navigate = useNavigate()
 
   return (
     <DropdownMenu>
@@ -72,6 +76,17 @@ function DataSourcesMenu() {
           >
             Без тарифа
           </DropdownMenuCheckboxItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuLabel>Сторінка підключення (демо)</DropdownMenuLabel>
+          {CONNECT_ADS_DEMO_STATES.map((state) => (
+            <DropdownMenuItem
+              key={state.label}
+              onClick={() => navigate(state.to)}
+            >
+              <IconExternalLink className="text-muted-foreground" />
+              {state.label}
+            </DropdownMenuItem>
+          ))}
         </DropdownMenuGroup>
       </DropdownMenuContent>
     </DropdownMenu>
