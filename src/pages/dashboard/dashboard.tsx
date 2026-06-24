@@ -65,8 +65,8 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { PLAN_FEATURES, PricingGrid } from "@/features/billing/plans"
-import { ONBOARDING_STEPS } from "@/pages/onboarding/onboarding"
 import { cn } from "@/lib/utils"
+import { ONBOARDING_STEPS } from "@/pages/onboarding/onboarding"
 import {
   avatarColor,
   BUYERS,
@@ -329,7 +329,9 @@ function OnboardingCallout({ onDismiss }: { onDismiss: () => void }) {
             className="w-fit gap-1.5 bg-neutral-900 text-white hover:bg-neutral-800 dark:bg-white dark:text-neutral-900 dark:hover:bg-neutral-200"
             onClick={() =>
               navigate("/onboarding", {
-                state: { step: firstIncomplete === -1 ? 1 : firstIncomplete + 1 },
+                state: {
+                  step: firstIncomplete === -1 ? 1 : firstIncomplete + 1,
+                },
               })
             }
           >
@@ -368,7 +370,7 @@ function NoPlanCallout() {
           </div>
           <p className="max-w-xl text-sm text-muted-foreground">
             Оберіть тариф, щоб бачити ліди, ROI, топ баєрів та колцентрів у
-            реальному часі — без обмежень.
+            реальному часі - без обмежень.
           </p>
           <div className="mt-1 flex flex-wrap gap-2">
             {PLAN_FEATURES.map((feature) => (
@@ -392,7 +394,9 @@ function NoPlanCallout() {
             <IconCrown className="size-4" />
             Обрати тариф
           </Button>
-          <span className="text-xs text-muted-foreground">від $19 / місяць</span>
+          <span className="text-xs text-muted-foreground">
+            від $19 / місяць
+          </span>
         </div>
       </CardContent>
       <PricingDialog open={pricingOpen} onOpenChange={setPricingOpen} />
@@ -647,7 +651,13 @@ function PricingDialog({
             Більше акаунтів, учасників команди та інтеграцій на платних тарифах
           </DialogDescription>
         </DialogHeader>
-        <PricingGrid size="sm" />
+        <PricingGrid
+          size="sm"
+          onSelect={(planId) => {
+            // Close the dialog so the checkout panel opens cleanly on top.
+            if (planId !== "free") onOpenChange(false)
+          }}
+        />
       </DialogContent>
     </Dialog>
   )
@@ -659,54 +669,54 @@ function TopBuyers() {
   if (noPlan || !sources.crm) {
     return (
       <Card className="relative gap-0 py-3.5 [--card-spacing:18px]">
-          <CardHeader className={cn(headerClass, "pb-3.5")}>
-            <CardTitle className={titleClass}>Топ баєрів</CardTitle>
-            <CardDescription className={descClass}>
-              ліди · апрув · ROI
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="relative px-0">
-            <div className="pointer-events-none opacity-80 blur-sm saturate-75 select-none">
-              <ScrollArea className="h-[286px] px-(--card-spacing)">
-                <div className="flex flex-col pt-1.5">
-                  {BUYERS.map((buyer) => (
-                    <div
-                      key={buyer.name}
-                      className="flex items-center gap-3 py-2.5"
-                    >
-                      <Avatar className="size-9">
-                        <AvatarFallback
-                          className="text-xs font-bold text-white"
-                          style={{ backgroundColor: avatarColor(buyer.name) }}
-                        >
-                          {buyer.initials}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div className="min-w-0 flex-1">
-                        <div className="truncate text-sm font-semibold">
-                          {buyer.name}
-                        </div>
-                        <div className="text-xs text-muted-foreground tabular-nums">
-                          {fmtNum(buyer.leads)} лідів · {fmtNum(buyer.approves)}{" "}
-                          апрув
-                        </div>
+        <CardHeader className={cn(headerClass, "pb-3.5")}>
+          <CardTitle className={titleClass}>Топ баєрів</CardTitle>
+          <CardDescription className={descClass}>
+            ліди · апрув · ROI
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="relative px-0">
+          <div className="pointer-events-none opacity-80 blur-sm saturate-75 select-none">
+            <ScrollArea className="h-[286px] px-(--card-spacing)">
+              <div className="flex flex-col pt-1.5">
+                {BUYERS.map((buyer) => (
+                  <div
+                    key={buyer.name}
+                    className="flex items-center gap-3 py-2.5"
+                  >
+                    <Avatar className="size-9">
+                      <AvatarFallback
+                        className="text-xs font-bold text-white"
+                        style={{ backgroundColor: avatarColor(buyer.name) }}
+                      >
+                        {buyer.initials}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-sm font-semibold">
+                        {buyer.name}
                       </div>
-                      <RoiBadge value={buyer.roi} threshold={100} />
+                      <div className="text-xs text-muted-foreground tabular-nums">
+                        {fmtNum(buyer.leads)} лідів · {fmtNum(buyer.approves)}{" "}
+                        апрув
+                      </div>
                     </div>
-                  ))}
-                </div>
-              </ScrollArea>
-            </div>
-            <LockedOverlay
-              noPlan={noPlan}
-              icon={IconDatabase}
-              title="Користувачів не додано"
-              description="Додайте учасників команди, щоб бачити їх рейтинг"
-              actionLabel="Додати учасників"
-              actionOpensPricing
-            />
-          </CardContent>
-        </Card>
+                    <RoiBadge value={buyer.roi} threshold={100} />
+                  </div>
+                ))}
+              </div>
+            </ScrollArea>
+          </div>
+          <LockedOverlay
+            noPlan={noPlan}
+            icon={IconDatabase}
+            title="Користувачів не додано"
+            description="Додайте учасників команди, щоб бачити їх рейтинг"
+            actionLabel="Додати учасників"
+            actionOpensPricing
+          />
+        </CardContent>
+      </Card>
     )
   }
 

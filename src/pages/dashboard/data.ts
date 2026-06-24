@@ -1,5 +1,5 @@
 // Mock data for the AdsMetry dashboard prototype (UAH ₴).
-// Adapted from the original prototype — numbers are illustrative.
+// Adapted from the original prototype - numbers are illustrative.
 
 export type KpiKey =
   | "leads"
@@ -60,14 +60,56 @@ export type Buyer = {
 }
 
 export const BUYERS: Buyer[] = [
-  { name: "Олег Кравець", initials: "ОК", leads: 4820, approves: 1980, roi: 142 },
-  { name: "Ірина Соболь", initials: "ІС", leads: 4110, approves: 1720, roi: 128 },
-  { name: "Дмитро Левченко", initials: "ДЛ", leads: 3640, approves: 1410, roi: 96 },
-  { name: "Марина Гнатюк", initials: "МГ", leads: 2980, approves: 1190, roi: 88 },
+  {
+    name: "Олег Кравець",
+    initials: "ОК",
+    leads: 4820,
+    approves: 1980,
+    roi: 142,
+  },
+  {
+    name: "Ірина Соболь",
+    initials: "ІС",
+    leads: 4110,
+    approves: 1720,
+    roi: 128,
+  },
+  {
+    name: "Дмитро Левченко",
+    initials: "ДЛ",
+    leads: 3640,
+    approves: 1410,
+    roi: 96,
+  },
+  {
+    name: "Марина Гнатюк",
+    initials: "МГ",
+    leads: 2980,
+    approves: 1190,
+    roi: 88,
+  },
   { name: "Андрій Бойко", initials: "АБ", leads: 2510, approves: 940, roi: 61 },
-  { name: "Світлана Руденко", initials: "СР", leads: 2280, approves: 870, roi: 104 },
-  { name: "Тарас Мельник", initials: "ТМ", leads: 1990, approves: 760, roi: 73 },
-  { name: "Юлія Захарчук", initials: "ЮЗ", leads: 1740, approves: 690, roi: 55 },
+  {
+    name: "Світлана Руденко",
+    initials: "СР",
+    leads: 2280,
+    approves: 870,
+    roi: 104,
+  },
+  {
+    name: "Тарас Мельник",
+    initials: "ТМ",
+    leads: 1990,
+    approves: 760,
+    roi: 73,
+  },
+  {
+    name: "Юлія Захарчук",
+    initials: "ЮЗ",
+    leads: 1740,
+    approves: 690,
+    roi: 55,
+  },
 ]
 
 export type Product = {
@@ -80,12 +122,54 @@ export type Product = {
 }
 
 export const PRODUCTS: Product[] = [
-  { name: "Тример для бороди BarberPro", orders: 1010, sales: 638_000, buyout: 71, income: 142_000, roi: 118 },
-  { name: "Масажер для шиї Neck Relax", orders: 712, sales: 606_000, buyout: 66, income: 121_000, roi: 104 },
-  { name: "Набір ножів SharpEdge", orders: 470, sales: 367_000, buyout: 68, income: 88_000, roi: 96 },
-  { name: "Органайзер для авто CarTidy", orders: 372, sales: 177_000, buyout: 69, income: 52_000, roi: 74 },
-  { name: "Корсет PostureFix", orders: 402, sales: 187_000, buyout: 63, income: 41_000, roi: 58 },
-  { name: "Робот-пилосос CleanMax X9", orders: 488, sales: 1_005_000, buyout: 59, income: -34_000, roi: -12 },
+  {
+    name: "Тример для бороди BarberPro",
+    orders: 1010,
+    sales: 638_000,
+    buyout: 71,
+    income: 142_000,
+    roi: 118,
+  },
+  {
+    name: "Масажер для шиї Neck Relax",
+    orders: 712,
+    sales: 606_000,
+    buyout: 66,
+    income: 121_000,
+    roi: 104,
+  },
+  {
+    name: "Набір ножів SharpEdge",
+    orders: 470,
+    sales: 367_000,
+    buyout: 68,
+    income: 88_000,
+    roi: 96,
+  },
+  {
+    name: "Органайзер для авто CarTidy",
+    orders: 372,
+    sales: 177_000,
+    buyout: 69,
+    income: 52_000,
+    roi: 74,
+  },
+  {
+    name: "Корсет PostureFix",
+    orders: 402,
+    sales: 187_000,
+    buyout: 63,
+    income: 41_000,
+    roi: 58,
+  },
+  {
+    name: "Робот-пилосос CleanMax X9",
+    orders: 488,
+    sales: 1_005_000,
+    buyout: 59,
+    income: -34_000,
+    roi: -12,
+  },
 ]
 
 // ---- formatting helpers ----

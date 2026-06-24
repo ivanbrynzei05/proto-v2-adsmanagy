@@ -1,5 +1,5 @@
 // Mock data + metric formulas for the campaigns table (UAH ₴).
-// Ported from the original prototype's data.js — numbers are internally
+// Ported from the original prototype's data.js - numbers are internally
 // consistent so column toggles and totals look believable.
 
 // ---- base settings (would come from "Налаштування") ----
@@ -32,7 +32,7 @@ export type Portfolio = {
   primary?: boolean
 }
 
-// numeric metrics — everything the table can sort / total on
+// numeric metrics - everything the table can sort / total on
 export type MetricKey =
   | "leads"
   | "costPerLead"

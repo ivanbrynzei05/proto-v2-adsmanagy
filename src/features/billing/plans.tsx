@@ -13,8 +13,15 @@ import {
   type Icon,
 } from "@tabler/icons-react"
 
+import { useState } from "react"
+
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import {
+  CheckoutSheet,
+  getCheckoutMode,
+  type Subscription,
+} from "@/features/billing/checkout-sheet"
 import { cn } from "@/lib/utils"
 
 export const PLAN_FEATURES = [
@@ -25,6 +32,62 @@ export const PLAN_FEATURES = [
 ] as const
 
 export type PlanFeatureKey = (typeof PLAN_FEATURES)[number]["key"]
+
+// Per-feature add-ons. Each paid plan can be extended unit-by-unit beyond its
+// included limits; the price is charged from the account balance together with
+// the plan. Yearly billing applies the same 2-months-free multiplier (×10).
+export const PLAN_ADDONS: Record<
+  PlanFeatureKey,
+  { unit: string; description: string; pricePerUnit: number; max: number }
+> = {
+  adAccounts: {
+    unit: "акаунт",
+    description: "Додатковий рекламний кабінет понад ліміт тарифу",
+    pricePerUnit: 3,
+    max: 50,
+  },
+  members: {
+    unit: "учасник",
+    description: "Ще один член команди з доступом до аналітики",
+    pricePerUnit: 7,
+    max: 20,
+  },
+  crm: {
+    unit: "інтеграція",
+    description: "Додаткова CRM-інтеграція для збору лідів",
+    pricePerUnit: 5,
+    max: 10,
+  },
+  callCenters: {
+    unit: "колцентр",
+    description: "Додатковий колцентр для розрахунку маржі",
+    pricePerUnit: 4,
+    max: 10,
+  },
+}
+
+export const YEARLY_MULTIPLIER = 10
+
+// Max saving when paying yearly vs month-to-month (2 months free → ~17%).
+// Single source for the "до X%" badges on the billing-period toggles.
+export const YEARLY_DISCOUNT_PERCENT = Math.round(
+  (1 - YEARLY_MULTIPLIER / 12) * 100
+)
+
+// Parse a plan's displayed price ("$29") into a number for the selected period.
+// Free plans (and anything unparseable) come back as 0.
+export function getPlanPrice(
+  plan: (typeof PRICING_PLANS)[number],
+  period: "monthly" | "yearly"
+): number {
+  if (plan.id === "free") return 0
+  const source =
+    period === "yearly" ? (plan.priceYearly ?? plan.price) : plan.price
+  const match = source.match(/([0-9.,]+)/)
+  if (!match) return 0
+  const value = parseFloat(match[1].replace(/,/g, ""))
+  return Number.isFinite(value) ? value : 0
+}
 
 type PlanTheme = {
   card: string
@@ -37,8 +100,8 @@ type PlanTheme = {
 }
 
 // Soft gradient tints per plan; the "popular" plan gets the lime hero treatment
-// and "max" gets a premium gold treatment — both get a glow + badge.
-const PLAN_THEMES: Record<string, PlanTheme> = {
+// and "max" gets a premium gold treatment - both get a glow + badge.
+export const PLAN_THEMES: Record<string, PlanTheme> = {
   free: {
     card: "border-border bg-gradient-to-b from-muted/40 to-card",
     iconBox:
@@ -141,234 +204,271 @@ export const PRICING_PLANS = [
 
 export function PricingGrid({
   currentPlanId = "free",
+  subscription,
   className,
   allowSelectCurrent = false,
   onSelect,
   billingPeriod = "monthly",
   size = "default",
   freeCurrentLabel = "Поточний тариф",
+  onCheckoutComplete,
 }: {
   currentPlanId?: string
+  // Active subscription details. When present, paid plans open as an
+  // upgrade/downgrade in the checkout panel instead of a fresh purchase.
+  subscription?: Subscription
   className?: string
   allowSelectCurrent?: boolean
+  // Called for every plan click. Paid plans additionally open the checkout
+  // side-panel; use this to react (e.g. close a dialog) or handle the free plan.
   onSelect?: (planId: string) => void
   billingPeriod?: "monthly" | "yearly"
   size?: "default" | "sm"
   freeCurrentLabel?: string
+  onCheckoutComplete?: () => void
 }) {
   const compact = size === "sm"
-  return (
-    <div
-      className={cn(
-        "grid sm:grid-cols-2 xl:grid-cols-4",
-        compact ? "gap-3" : "gap-4",
-        className
-      )}
-    >
-      {PRICING_PLANS.map((plan) => {
-        const isCurrent = plan.id === currentPlanId
-        const theme = PLAN_THEMES[plan.id]
-        const displayPrice =
-          plan.id === "free"
-            ? plan.price
-            : billingPeriod === "yearly"
-              ? // prefer explicit yearly price, fallback to monthly
-                (plan.priceYearly ?? plan.price)
-              : plan.price
-        const displayPeriod =
-          plan.id === "free"
-            ? plan.period
-            : billingPeriod === "yearly"
-              ? "рік"
-              : plan.period
-        const parsePrice = (s?: string) => {
-          if (!s || typeof s !== "string") return { symbol: "", value: 0 }
-          const m = s.match(/^([^0-9]*)([0-9.,]+)/)
-          if (!m) return { symbol: "", value: 0 }
-          const symbol = m[1] ?? ""
-          const num = parseFloat(m[2].replace(/,/g, ""))
-          return { symbol, value: Number.isFinite(num) ? num : 0 }
-        }
+  // Paid-plan selection opens the checkout panel; null keeps it closed.
+  const [checkoutPlanId, setCheckoutPlanId] = useState<string | null>(null)
 
-        // Unified discount descriptor: yearly billing shows the savings versus
-        // paying month-to-month for a year; monthly billing shows an explicit
-        // launch discount when a plan defines one.
-        let discount: { original: string; percent: number } | null = null
-        if (plan.id !== "free") {
-          if (billingPeriod === "yearly") {
-            const monthly = parsePrice(plan.price)
-            const yearly = parsePrice(displayPrice)
-            if (monthly.value > 0 && yearly.value > 0) {
-              const baseline = monthly.value * 12
-              const saved = Math.round(baseline - yearly.value)
-              if (saved > 0) {
-                discount = {
-                  original: `${monthly.symbol}${baseline}`,
-                  percent: Math.round((saved / baseline) * 100),
+  const handleSelect = (planId: string) => {
+    onSelect?.(planId)
+    if (planId !== "free") setCheckoutPlanId(planId)
+  }
+
+  return (
+    <>
+      <div
+        className={cn(
+          "grid sm:grid-cols-2 xl:grid-cols-4",
+          compact ? "gap-3" : "gap-4",
+          className
+        )}
+      >
+        {PRICING_PLANS.map((plan) => {
+          const isCurrent = plan.id === currentPlanId
+          const theme = PLAN_THEMES[plan.id]
+          const displayPrice =
+            plan.id === "free"
+              ? plan.price
+              : billingPeriod === "yearly"
+                ? // prefer explicit yearly price, fallback to monthly
+                  (plan.priceYearly ?? plan.price)
+                : plan.price
+          const displayPeriod =
+            plan.id === "free"
+              ? plan.period
+              : billingPeriod === "yearly"
+                ? "рік"
+                : plan.period
+          const parsePrice = (s?: string) => {
+            if (!s || typeof s !== "string") return { symbol: "", value: 0 }
+            const m = s.match(/^([^0-9]*)([0-9.,]+)/)
+            if (!m) return { symbol: "", value: 0 }
+            const symbol = m[1] ?? ""
+            const num = parseFloat(m[2].replace(/,/g, ""))
+            return { symbol, value: Number.isFinite(num) ? num : 0 }
+          }
+
+          // Unified discount descriptor: yearly billing shows the savings versus
+          // paying month-to-month for a year; monthly billing shows an explicit
+          // launch discount when a plan defines one.
+          let discount: { original: string; percent: number } | null = null
+          if (plan.id !== "free") {
+            if (billingPeriod === "yearly") {
+              const monthly = parsePrice(plan.price)
+              const yearly = parsePrice(displayPrice)
+              if (monthly.value > 0 && yearly.value > 0) {
+                const baseline = monthly.value * 12
+                const saved = Math.round(baseline - yearly.value)
+                if (saved > 0) {
+                  discount = {
+                    original: `${monthly.symbol}${baseline}`,
+                    percent: Math.round((saved / baseline) * 100),
+                  }
                 }
               }
-            }
-          } else if (plan.originalPrice && plan.discountPercent) {
-            discount = {
-              original: plan.originalPrice,
-              percent: plan.discountPercent,
+            } else if (plan.originalPrice && plan.discountPercent) {
+              discount = {
+                original: plan.originalPrice,
+                percent: plan.discountPercent,
+              }
             }
           }
-        }
 
-        return (
-          <div
-            key={plan.id}
-            className={cn(
-              "relative flex flex-col overflow-hidden rounded-2xl border shadow-sm transition-all duration-200 hover:-translate-y-1 hover:shadow-lg",
-              compact ? "gap-3 p-4" : "gap-4 p-5",
-              theme.card
-            )}
-          >
-            {theme.glow && (
-              <div
-                aria-hidden
-                className={cn(
-                  "pointer-events-none absolute -top-12 -right-12 size-32 rounded-full blur-3xl",
-                  theme.glow
-                )}
-              />
-            )}
-            {theme.badge && (
-              <Badge
-                className={cn(
-                  "absolute top-3 right-3 z-10 gap-1 border-transparent font-semibold shadow-sm",
-                  theme.badge
-                )}
-              >
-                <plan.icon className="size-3" />
-                {theme.badgeLabel}
-              </Badge>
-            )}
-            <div className="relative flex items-center gap-2.5">
-              <div
-                className={cn(
-                  "flex shrink-0 items-center justify-center rounded-2xl ring-1 ring-black/5 dark:ring-white/10",
-                  compact ? "size-9" : "size-10",
-                  theme.iconBox
-                )}
-              >
-                <plan.icon className={compact ? "size-4" : "size-5"} />
-              </div>
-              <div>
-                <p className="text-sm font-bold">{plan.name}</p>
-                <p className="text-xs text-muted-foreground">{plan.tagline}</p>
-              </div>
-            </div>
-            <div className="relative flex flex-col gap-1.5">
-              <div className="flex items-end gap-1.5">
-                <span
+          return (
+            <div
+              key={plan.id}
+              className={cn(
+                "relative flex flex-col overflow-hidden rounded-2xl border shadow-sm transition-all duration-200 hover:-translate-y-1 hover:shadow-lg",
+                compact ? "gap-3 p-4" : "gap-4 p-5",
+                theme.card
+              )}
+            >
+              {theme.glow && (
+                <div
+                  aria-hidden
                   className={cn(
-                    "font-extrabold tracking-tighter",
-                    compact ? "text-2xl" : "text-4xl"
+                    "pointer-events-none absolute -top-12 -right-12 size-32 rounded-full blur-3xl",
+                    theme.glow
+                  )}
+                />
+              )}
+              {theme.badge && (
+                <Badge
+                  className={cn(
+                    "absolute top-3 right-3 z-10 gap-1 border-transparent font-semibold shadow-sm",
+                    theme.badge
                   )}
                 >
-                  {displayPrice}
-                </span>
-                <span className="pb-1 text-xs font-medium text-muted-foreground">
-                  / {displayPeriod}
-                </span>
-              </div>
-              {/* reserve a row so price blocks stay aligned across plans */}
-              <div className="flex h-5 items-center gap-2">
-                {discount && (
-                  <>
-                    <span className="text-sm text-muted-foreground line-through">
-                      {discount.original}
-                    </span>
-                    <span className="inline-flex items-center gap-0.5 rounded-full bg-emerald-500/12 py-0.5 pr-2 pl-1.5 text-[11px] font-bold text-emerald-700 dark:text-emerald-400">
-                      <IconDiscount2 className="size-3.5" />
-                      Знижка {discount.percent}%
-                    </span>
-                  </>
-                )}
-              </div>
-            </div>
-            <div
-              className={cn(
-                "relative flex flex-col border-t border-border/60",
-                compact ? "gap-2 pt-3" : "gap-3 pt-4"
+                  <plan.icon className="size-3" />
+                  {theme.badgeLabel}
+                </Badge>
               )}
-            >
-              {PLAN_FEATURES.map((feature) => {
-                const value = plan.limits[feature.key]
-                const available = value > 0
-                return (
-                  <div key={feature.key} className="flex items-center gap-2.5">
-                    <span
-                      className={cn(
-                        "flex shrink-0 items-center justify-center rounded-full",
-                        compact ? "size-6" : "size-7",
-                        available
-                          ? "bg-emerald-500/12 text-emerald-600 dark:text-emerald-400"
-                          : "bg-muted text-muted-foreground"
-                      )}
+              <div className="relative flex items-center gap-2.5">
+                <div
+                  className={cn(
+                    "flex shrink-0 items-center justify-center rounded-2xl ring-1 ring-black/5 dark:ring-white/10",
+                    compact ? "size-9" : "size-10",
+                    theme.iconBox
+                  )}
+                >
+                  <plan.icon className={compact ? "size-4" : "size-5"} />
+                </div>
+                <div>
+                  <p className="text-sm font-bold">{plan.name}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {plan.tagline}
+                  </p>
+                </div>
+              </div>
+              <div className="relative flex flex-col gap-1.5">
+                <div className="flex items-end gap-1.5">
+                  <span
+                    className={cn(
+                      "font-extrabold tracking-tighter",
+                      compact ? "text-2xl" : "text-4xl"
+                    )}
+                  >
+                    {displayPrice}
+                  </span>
+                  <span className="pb-1 text-xs font-medium text-muted-foreground">
+                    / {displayPeriod}
+                  </span>
+                </div>
+                {/* reserve a row so price blocks stay aligned across plans */}
+                <div className="flex h-5 items-center gap-2">
+                  {discount && (
+                    <>
+                      <span className="text-sm text-muted-foreground line-through">
+                        {discount.original}
+                      </span>
+                      <span className="inline-flex items-center gap-0.5 rounded-full bg-emerald-500/12 py-0.5 pr-2 pl-1.5 text-[11px] font-bold text-emerald-700 dark:text-emerald-400">
+                        <IconDiscount2 className="size-3.5" />
+                        Знижка {discount.percent}%
+                      </span>
+                    </>
+                  )}
+                </div>
+              </div>
+              <div
+                className={cn(
+                  "relative flex flex-col border-t border-border/60",
+                  compact ? "gap-2 pt-3" : "gap-3 pt-4"
+                )}
+              >
+                {PLAN_FEATURES.map((feature) => {
+                  const value = plan.limits[feature.key]
+                  const available = value > 0
+                  return (
+                    <div
+                      key={feature.key}
+                      className="flex items-center gap-2.5"
                     >
-                      <feature.icon className={compact ? "size-3.5" : "size-4"} />
-                    </span>
-                    <span
-                      className={cn(
-                        "flex-1",
-                        compact ? "text-xs" : "text-sm"
-                      )}
-                    >
-                      {feature.label}
-                    </span>
-                    {available ? (
                       <span
                         className={cn(
-                          "font-bold tabular-nums",
-                          compact ? "text-xs" : "text-sm",
-                          theme.value
+                          "flex shrink-0 items-center justify-center rounded-full",
+                          compact ? "size-6" : "size-7",
+                          available
+                            ? "bg-emerald-500/12 text-emerald-600 dark:text-emerald-400"
+                            : "bg-muted text-muted-foreground"
                         )}
                       >
-                        {value}
+                        <feature.icon
+                          className={compact ? "size-3.5" : "size-4"}
+                        />
                       </span>
-                    ) : (
-                      <IconX className="size-4 text-muted-foreground" />
-                    )}
-                  </div>
-                )
-              })}
-              {plan.note && (
-                <p className="text-xs text-muted-foreground">{plan.note}</p>
-              )}
-            </div>
-            <Button
-              variant="secondary"
-              disabled={
-                plan.id === "free" ? false : !allowSelectCurrent && isCurrent
-              }
-              onClick={() => onSelect?.(plan.id)}
-              className={cn(
-                "relative mt-auto w-full gap-1.5 rounded-xl font-semibold",
-                compact ? "h-9 text-xs" : "h-11",
-                theme.button
-              )}
-            >
-              {isCurrent ? (
-                plan.id === "free" ? (
-                  freeCurrentLabel
+                      <span
+                        className={cn(
+                          "flex-1",
+                          compact ? "text-xs" : "text-sm"
+                        )}
+                      >
+                        {feature.label}
+                      </span>
+                      {available ? (
+                        <span
+                          className={cn(
+                            "font-bold tabular-nums",
+                            compact ? "text-xs" : "text-sm",
+                            theme.value
+                          )}
+                        >
+                          {value}
+                        </span>
+                      ) : (
+                        <IconX className="size-4 text-muted-foreground" />
+                      )}
+                    </div>
+                  )
+                })}
+                {plan.note && (
+                  <p className="text-xs text-muted-foreground">{plan.note}</p>
+                )}
+              </div>
+              <Button
+                variant="secondary"
+                disabled={
+                  plan.id === "free" ? false : !allowSelectCurrent && isCurrent
+                }
+                onClick={() => handleSelect(plan.id)}
+                className={cn(
+                  "relative mt-auto w-full gap-1.5 rounded-xl font-semibold",
+                  compact ? "h-9 text-xs" : "h-11",
+                  theme.button
+                )}
+              >
+                {isCurrent ? (
+                  plan.id === "free" ? (
+                    freeCurrentLabel
+                  ) : (
+                    "Поточний тариф"
+                  )
                 ) : (
-                  "Поточний тариф"
-                )
-              ) : (
-                <>
-                  <plan.icon className={compact ? "size-3.5" : "size-4"} />
-                  {plan.id === "free"
-                    ? "Залишитись на безкоштовному"
-                    : `Оформити ${plan.name}`}
-                </>
-              )}
-            </Button>
-          </div>
-        )
-      })}
-    </div>
+                  <>
+                    <plan.icon className={compact ? "size-3.5" : "size-4"} />
+                    {plan.id === "free"
+                      ? "Недоступно"
+                      : subscription
+                        ? getCheckoutMode(plan, subscription) === "upgrade"
+                          ? `Підвищити до ${plan.name}`
+                          : `Перейти на ${plan.name}`
+                        : `Оформити ${plan.name}`}
+                  </>
+                )}
+              </Button>
+            </div>
+          )
+        })}
+      </div>
+      <CheckoutSheet
+        planId={checkoutPlanId}
+        subscription={subscription}
+        onOpenChange={(open) => {
+          if (!open) setCheckoutPlanId(null)
+        }}
+        onComplete={onCheckoutComplete}
+      />
+    </>
   )
 }

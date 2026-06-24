@@ -95,7 +95,7 @@ export type CrmType = (typeof CRM_TYPES)[number]
 export type CrmStatusOption = { id: string; name: string }
 
 // The internal buckets our analytics understands. Every CRM status is mapped to
-// exactly one of these (or "ignore"). Several CRM statuses can share a bucket —
+// exactly one of these (or "ignore"). Several CRM statuses can share a bucket -
 // e.g. a client often has many different "rejection" statuses.
 export type CrmStatusCategoryKey =
   | "new"
@@ -122,7 +122,7 @@ export const CRM_STATUS_CATEGORIES: {
   {
     key: "completed",
     label: "Завершені замовлення",
-    hint: "Отримані та оплачені — це дохід",
+    hint: "Отримані та оплачені - це дохід",
     dot: "bg-lime-500",
     required: true,
   },

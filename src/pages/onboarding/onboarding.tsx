@@ -136,7 +136,7 @@ export function OnboardingPage() {
   } = useIntegrations()
 
   const [billingPeriod, setBillingPeriod] = useState<"monthly" | "yearly">(
-    "yearly"
+    "monthly"
   )
   const [confirmFreeOpen, setConfirmFreeOpen] = useState(false)
 
@@ -148,10 +148,10 @@ export function OnboardingPage() {
   const finish = () => navigate("/")
 
   const handleSelectPlan = (planId: string) => {
+    // Paid plans open the checkout panel inside PricingGrid; we only handle
+    // the free plan here (confirm dialog).
     if (planId === "free") {
       setConfirmFreeOpen(true)
-    } else {
-      finish()
     }
   }
 
@@ -213,7 +213,7 @@ export function OnboardingPage() {
           <div
             key={`heading-${step}`}
             className={cn(
-              "mb-6 max-w-xl text-center animate-in delay-150 duration-300 fill-mode-backwards fade-in",
+              "mb-6 max-w-xl animate-in text-center delay-150 duration-300 fill-mode-backwards fade-in",
               direction === "forward"
                 ? "slide-in-from-right-8"
                 : "slide-in-from-left-8"
@@ -269,7 +269,8 @@ export function OnboardingPage() {
                     currentPlanId="free"
                     allowSelectCurrent
                     onSelect={handleSelectPlan}
-                    freeCurrentLabel="Залишитись на безкоштовному"
+                    onCheckoutComplete={finish}
+                    freeCurrentLabel="Недоступно"
                   />
                 </div>
               )}

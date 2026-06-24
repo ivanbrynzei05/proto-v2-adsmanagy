@@ -71,7 +71,7 @@ const STATUS_BUCKETS: StatusBucket[] = CRM_STATUS_CATEGORIES.map((c) => ({
 const VALID_BUCKET_KEYS = new Set<string>(STATUS_BUCKETS.map((b) => b.key))
 
 // A status counts as placed only when it sits in a bucket we actually surface.
-// Auto-match can occasionally guess a bucket we don't show — treat those as
+// Auto-match can occasionally guess a bucket we don't show - treat those as
 // still loose so the user can place them rather than silently losing them.
 const isStatusPlaced = (mapping: CrmStatusMapping, id: string) =>
   Boolean(mapping[id]) && VALID_BUCKET_KEYS.has(mapping[id])
@@ -109,7 +109,7 @@ function CrmLogo({ type, className }: { type: CrmType; className?: string }) {
 
 // One analytics bucket and the statuses placed in it. The multiselect offers
 // every status that's still free (or already here); statuses already claimed by
-// another bucket aren't listed — the user removes them there first. Selected
+// another bucket aren't listed - the user removes them there first. Selected
 // statuses show as removable chips.
 function CategoryMappingRow({
   bucket,
@@ -134,7 +134,7 @@ function CategoryMappingRow({
         selected.length > 0 ? "bg-muted/40" : "border-dashed"
       )}
     >
-      <div className="flex items-center gap-2 whitespace-nowrap pt-1.5">
+      <div className="flex items-center gap-2 pt-1.5 whitespace-nowrap">
         <span className={cn("size-2 shrink-0 rounded-full", bucket.dot)} />
         <span className="text-sm font-medium">
           {bucket.label}

@@ -94,7 +94,7 @@ function fetchPublicInvite(token: string): Promise<AdInvitePublic> {
 function startPublicOauth(token: string): Promise<{ authorize_url: string }> {
   return new Promise((resolve, reject) => {
     setTimeout(() => {
-      // 409 INVALID_STATE — link expired between открытием and кліком.
+      // 409 INVALID_STATE - link expired between открытием and кліком.
       if (token.includes("stale")) {
         reject(new Error("INVALID_STATE"))
         return
@@ -388,7 +388,7 @@ function ReadyState({
         </Button>
         <div className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
           <IconShieldLock className="size-3.5 text-emerald-600 dark:text-emerald-400" />
-          Захищено OAuth 2.0 — ми не бачимо ваш пароль
+          Захищено OAuth 2.0 - ми не бачимо ваш пароль
         </div>
       </div>
     </StateCard>
@@ -458,7 +458,7 @@ function SuccessState({ provider }: { provider: InviteProvider | null }) {
       description={
         <>
           {label} успішно під'єднано. Дані почнуть синхронізуватися найближчим
-          часом — можна закрити цю вкладку.
+          часом - можна закрити цю вкладку.
         </>
       }
     >
