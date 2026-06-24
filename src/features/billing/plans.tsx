@@ -207,6 +207,7 @@ export function PricingGrid({
   subscription,
   className,
   allowSelectCurrent = false,
+  allowFreeCheckout = false,
   onSelect,
   billingPeriod = "monthly",
   size = "default",
@@ -219,6 +220,9 @@ export function PricingGrid({
   subscription?: Subscription
   className?: string
   allowSelectCurrent?: boolean
+  // Demo-only: open the plain checkout panel for the Free plan too, instead of
+  // treating it as a plan change.
+  allowFreeCheckout?: boolean
   // Called for every plan click. Paid plans additionally open the checkout
   // side-panel; use this to react (e.g. close a dialog) or handle the free plan.
   onSelect?: (planId: string) => void
@@ -233,7 +237,7 @@ export function PricingGrid({
 
   const handleSelect = (planId: string) => {
     onSelect?.(planId)
-    if (planId !== "free") setCheckoutPlanId(planId)
+    if (planId !== "free" || allowFreeCheckout) setCheckoutPlanId(planId)
   }
 
   return (
@@ -448,7 +452,9 @@ export function PricingGrid({
                   <>
                     <plan.icon className={compact ? "size-3.5" : "size-4"} />
                     {plan.id === "free"
-                      ? "Недоступно"
+                      ? allowFreeCheckout
+                        ? "Оформити Free"
+                        : "Недоступно"
                       : subscription
                         ? getCheckoutMode(plan, subscription) === "upgrade"
                           ? `Підвищити до ${plan.name}`

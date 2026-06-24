@@ -546,6 +546,7 @@ function PlansSection() {
               usage: PLAN_USAGE,
               addons: ACTIVE_ADDONS,
             }}
+            allowFreeCheckout
             billingPeriod={billingPeriod}
             size="sm"
           />
