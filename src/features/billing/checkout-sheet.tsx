@@ -357,7 +357,7 @@ function CheckoutBody({
             tone="upgrade"
             icon={IconTrendingUp}
             title={`Підвищення з ${currentPlan.name} до ${plan.name}`}
-            text={`Діє одразу. Зараз доплачуєте лише різницю за ${proration?.remainingDays} дн., що лишились до ${renewalLabel}.`}
+            text="Діє одразу."
           />
         )}
         {mode === "downgrade" && currentPlan && (
@@ -616,20 +616,10 @@ function CheckoutBody({
                   ${formatMoney(chargeNow)}
                 </span>
               </div>
-              <p className="mt-1 text-xs text-amber-700/90 dark:text-amber-300/90">
-                Різниця ${formatMoney(planDiff)}
-                {addonsTotal > 0 &&
-                  ` + додатки $${formatMoney(addonsTotal)}`} / {periodLabel} ×{" "}
-                {proration.remainingDays} із {proration.cycleDays} дн.
-              </p>
             </div>
 
-            <div className="flex items-start gap-1.5 text-xs text-muted-foreground">
-              <IconCalendarEvent className="mt-px size-3.5 shrink-0" />
-              Дата списання не зсувається - наступна оплата {renewalLabel}.
-            </div>
             <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
-              <span>Далі, повна сума</span>
+              <span>Повна ціна з {renewalLabel}</span>
               <span className="tabular-nums">
                 ${formatMoney(newRecurring)} / {periodLabel}
               </span>
