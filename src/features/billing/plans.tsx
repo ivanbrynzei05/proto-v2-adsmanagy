@@ -205,6 +205,7 @@ export const PRICING_PLANS = [
 export function PricingGrid({
   currentPlanId = "free",
   subscription,
+  usage,
   className,
   allowSelectCurrent = false,
   allowFreeCheckout = false,
@@ -218,6 +219,9 @@ export function PricingGrid({
   // Active subscription details. When present, paid plans open as an
   // upgrade/downgrade in the checkout panel instead of a fresh purchase.
   subscription?: Subscription
+  // Current resource usage — blocks a fresh subscription to a plan that is
+  // smaller than what the account already uses (trial/expired).
+  usage?: Record<PlanFeatureKey, number>
   className?: string
   allowSelectCurrent?: boolean
   // Demo-only: open the plain checkout panel for the Free plan too, instead of
@@ -470,6 +474,7 @@ export function PricingGrid({
       <CheckoutSheet
         planId={checkoutPlanId}
         subscription={subscription}
+        usage={usage}
         onOpenChange={(open) => {
           if (!open) setCheckoutPlanId(null)
         }}

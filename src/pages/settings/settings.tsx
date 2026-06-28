@@ -4,7 +4,6 @@ import {
   IconDatabase,
   IconDeviceDesktop,
   IconHeadset,
-  IconLock,
   IconMoon,
   IconPlugConnected,
   IconSettings,
@@ -13,11 +12,11 @@ import {
   type Icon,
 } from "@tabler/icons-react"
 import { useState } from "react"
+import { useSearchParams } from "react-router-dom"
 
 import { useIntegrations } from "@/components/integrations-provider"
 import { useTheme } from "@/components/theme-provider"
 import { Badge } from "@/components/ui/badge"
-import { BillingPeriodToggle } from "@/components/ui/billing-period-toggle"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -27,27 +26,11 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { Switch } from "@/components/ui/switch"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
-import { formatPlanDate } from "@/features/billing/checkout-sheet"
-import {
-  getPlanPrice,
-  PLAN_ADDONS,
-  PLAN_FEATURES,
-  PRICING_PLANS,
-  PricingGrid,
-  type PlanFeatureKey,
-} from "@/features/billing/plans"
+import { useSubscription } from "@/features/billing/subscription-context"
 import { AdAccountsStep } from "@/features/integrations/ad-accounts-step"
 import { CallCentersStep } from "@/features/integrations/call-centers-step"
 import { CrmStep } from "@/features/integrations/crm-step"
+import { SubscriptionManager } from "@/pages/subscription/subscription"
 import { cn } from "@/lib/utils"
 
 type SectionId = "general" | "sources" | "billing" | "plans"
@@ -59,9 +42,22 @@ const SECTIONS: {
 }[] = [
   { id: "general", label: "Загальне", icon: IconSettings },
   { id: "sources", label: "Джерела даних", icon: IconPlugConnected },
-  { id: "billing", label: "Оплата", icon: IconWallet },
-  { id: "plans", label: "Тарифи", icon: IconCreditCard },
+  { id: "plans", label: "Підписка", icon: IconCreditCard },
+  { id: "billing", label: "Баланс", icon: IconWallet },
 ]
+
+// Map a `?section=` query value (e.g. from the header billing chip) onto a tab.
+function sectionFromParam(value: string | null): SectionId {
+  if (
+    value === "sources" ||
+    value === "general" ||
+    value === "billing" ||
+    value === "plans"
+  ) {
+    return value
+  }
+  return "general"
+}
 
 function Row({
   label,
@@ -291,273 +287,46 @@ function SourcesSection() {
   )
 }
 
-function BillingSection() {
+function BalanceCard() {
+  const { balance } = useSubscription()
   return (
-    <div className="flex flex-col gap-4">
-      <Card>
-        <CardHeader className="border-b">
-          <CardTitle className="text-[15px] font-bold tracking-tight">
-            Баланс
-          </CardTitle>
-          <CardDescription className="text-xs">
-            Поповнюйте баланс для безперебійної роботи аналітики
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-3">
-            <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-muted">
-              <IconWallet className="size-5 text-muted-foreground" />
-            </div>
-            <div>
-              <span className="text-2xl font-extrabold tracking-tight tabular-nums">
-                85 $
-              </span>
-              <p className="text-xs text-muted-foreground">
-                Доступно на балансі
-              </p>
-            </div>
+    <Card>
+      <CardHeader className="border-b">
+        <CardTitle className="text-[15px] font-bold tracking-tight">
+          Баланс
+        </CardTitle>
+        <CardDescription className="text-xs">
+          З балансу списуються тариф і додатки — поповнюйте для безперебійної
+          роботи аналітики
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-3">
+          <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-muted">
+            <IconWallet className="size-5 text-muted-foreground" />
           </div>
-          <Button className="bg-neutral-900 text-white hover:bg-neutral-800 dark:bg-white dark:text-neutral-900 dark:hover:bg-neutral-200">
-            Поповнити баланс
-          </Button>
-        </CardContent>
-      </Card>
-    </div>
-  )
-}
-
-// Prototype data for the active subscription: which plan, how much of each
-// limit is in use, and which per-feature add-ons were bought on top.
-const CURRENT_PLAN_ID = "pro"
-
-// Billing cycle of the active plan and the date the current period ends. The
-// checkout panel uses these to prorate upgrades and schedule downgrades.
-const CURRENT_PERIOD = "monthly" as const
-const RENEWAL_DATE = new Date(2026, 6, 12) // 12 липня 2026
-const RENEWAL_LABEL = formatPlanDate(RENEWAL_DATE)
-
-const PLAN_USAGE: Record<PlanFeatureKey, number> = {
-  adAccounts: 22,
-  members: 2,
-  crm: 1,
-  callCenters: 1,
-}
-
-const ACTIVE_ADDONS: Partial<Record<PlanFeatureKey, number>> = {
-  adAccounts: 5,
-  members: 1,
-}
-
-// Thin SVG usage ring (no fill, just an arc) - like the indicators in the ref.
-function UsageRing({ pct }: { pct: number }) {
-  const r = 7
-  const circ = 2 * Math.PI * r
-  const offset = circ * (1 - Math.min(100, pct) / 100)
-  const tone =
-    pct >= 100
-      ? "stroke-destructive"
-      : pct >= 80
-        ? "stroke-amber-500"
-        : "stroke-foreground"
-  return (
-    <svg viewBox="0 0 20 20" className="size-5 shrink-0 -rotate-90">
-      <circle
-        cx="10"
-        cy="10"
-        r={r}
-        fill="none"
-        strokeWidth="2.5"
-        className="stroke-muted"
-      />
-      <circle
-        cx="10"
-        cy="10"
-        r={r}
-        fill="none"
-        strokeWidth="2.5"
-        strokeLinecap="round"
-        className={tone}
-        strokeDasharray={circ}
-        strokeDashoffset={offset}
-      />
-    </svg>
-  )
-}
-
-function CurrentPlanCard() {
-  const plan = PRICING_PLANS.find((p) => p.id === CURRENT_PLAN_ID)!
-  const basePrice = getPlanPrice(plan, "monthly")
-  const addonsTotal = PLAN_FEATURES.reduce(
-    (sum, f) =>
-      sum + (ACTIVE_ADDONS[f.key] ?? 0) * PLAN_ADDONS[f.key].pricePerUnit,
-    0
-  )
-  const total = basePrice + addonsTotal
-  const [autoRenew, setAutoRenew] = useState(true)
-
-  return (
-    <>
-      {/* Plan summary */}
-      <Card>
-        <CardHeader className="border-b">
-          <CardTitle className="text-[15px] font-bold tracking-tight">
-            Поточний тариф
-          </CardTitle>
-          <CardDescription className="text-xs">
-            Ваш активний тариф і дата наступної оплати
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-4">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-center gap-3">
-              <div className="flex size-12 shrink-0 items-center justify-center rounded-xl border bg-muted text-muted-foreground">
-                <plan.icon className="size-6" />
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="text-base font-bold">{plan.name}</span>
-                  <Badge
-                    variant="outline"
-                    className="border-transparent bg-emerald-500/12 text-emerald-600 dark:text-emerald-400"
-                  >
-                    Активний
-                  </Badge>
-                </div>
-                <p className="mt-0.5 text-xs text-muted-foreground">
-                  {plan.tagline}
-                </p>
-              </div>
-            </div>
-            <Button variant="secondary">Редагувати тариф</Button>
+          <div>
+            <span className="text-2xl font-extrabold tracking-tight tabular-nums">
+              {balance} $
+            </span>
+            <p className="text-xs text-muted-foreground">Доступно на балансі</p>
           </div>
-
-          {/* Date, price and auto-renew - all in one place */}
-          <div className="flex flex-col gap-3 rounded-xl border bg-muted/30 p-4">
-            <div className="flex items-center justify-between gap-4 text-sm">
-              <span className="text-muted-foreground">Наступна оплата</span>
-              <span className="font-medium">{RENEWAL_LABEL}</span>
-            </div>
-            <div className="flex items-center justify-between gap-4 text-sm">
-              <span className="text-muted-foreground">Сума</span>
-              <span className="font-semibold tabular-nums">
-                ${total.toFixed(2)}{" "}
-                <span className="font-normal text-muted-foreground">
-                  / місяць
-                </span>
-              </span>
-            </div>
-            <div className="flex items-center justify-between gap-4 border-t pt-3">
-              <div className="min-w-0">
-                <div className="text-sm font-medium">Автопродовження</div>
-                <div className="text-xs text-muted-foreground">
-                  {autoRenew
-                    ? "Тариф продовжиться автоматично"
-                    : `Тариф завершиться ${RENEWAL_LABEL}`}
-                </div>
-              </div>
-              <Switch checked={autoRenew} onCheckedChange={setAutoRenew} />
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Limit usage */}
-      <Card size="sm" className="p-2">
-        <Table>
-          <TableHeader className="[&_tr]:border-0">
-            <TableRow className="hover:bg-transparent">
-              <TableHead className="h-10 rounded-l-lg bg-muted/60 px-3 text-muted-foreground">
-                Ресурс
-              </TableHead>
-              <TableHead className="h-10 rounded-r-lg bg-muted/60 px-3 text-right text-muted-foreground">
-                Використання
-              </TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {PLAN_FEATURES.map((feature) => {
-              const disabled = feature.key === "members"
-              const limit =
-                plan.limits[feature.key] + (ACTIVE_ADDONS[feature.key] ?? 0)
-              const used = PLAN_USAGE[feature.key]
-              const pct = limit > 0 ? (used / limit) * 100 : 0
-              return (
-                <TableRow
-                  key={feature.key}
-                  className={cn(
-                    "hover:bg-transparent",
-                    disabled && "opacity-50"
-                  )}
-                >
-                  <TableCell className="px-3 py-3">
-                    <span className="flex items-center gap-2.5 font-medium">
-                      {disabled ? (
-                        <span className="flex size-5 shrink-0 items-center justify-center">
-                          <IconLock className="size-4 text-muted-foreground" />
-                        </span>
-                      ) : (
-                        <UsageRing pct={pct} />
-                      )}
-                      {feature.label}
-                    </span>
-                  </TableCell>
-                  <TableCell className="px-3 py-3 text-right text-muted-foreground tabular-nums">
-                    {disabled ? "Недоступно" : `${used} / ${limit}`}
-                  </TableCell>
-                </TableRow>
-              )
-            })}
-          </TableBody>
-        </Table>
-      </Card>
-    </>
+        </div>
+        <Button className="bg-neutral-900 text-white hover:bg-neutral-800 dark:bg-white dark:text-neutral-900 dark:hover:bg-neutral-200">
+          Поповнити баланс
+        </Button>
+      </CardContent>
+    </Card>
   )
 }
 
-function PlansSection() {
-  const [billingPeriod, setBillingPeriod] = useState<"monthly" | "yearly">(
-    "monthly"
-  )
-  return (
-    <div className="flex flex-col gap-4">
-      <CurrentPlanCard />
-      <Card>
-        <CardHeader className="border-b">
-          <CardTitle className="text-[15px] font-bold tracking-tight">
-            Змінити тариф
-          </CardTitle>
-          <CardDescription className="text-xs">
-            Більше акаунтів, учасників команди та інтеграцій на платних тарифах
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="mb-4 flex justify-center">
-            <BillingPeriodToggle
-              value={billingPeriod}
-              onChange={setBillingPeriod}
-            />
-          </div>
-          <PricingGrid
-            currentPlanId={CURRENT_PLAN_ID}
-            subscription={{
-              planId: CURRENT_PLAN_ID,
-              period: CURRENT_PERIOD,
-              renewalDate: RENEWAL_DATE,
-              usage: PLAN_USAGE,
-              addons: ACTIVE_ADDONS,
-            }}
-            allowFreeCheckout
-            billingPeriod={billingPeriod}
-            size="sm"
-          />
-        </CardContent>
-      </Card>
-    </div>
-  )
-}
 
 export function SettingsPage() {
-  const [active, setActive] = useState<SectionId>("general")
+  const [searchParams, setSearchParams] = useSearchParams()
+  const active = sectionFromParam(searchParams.get("section"))
+  const setActive = (id: SectionId) => {
+    setSearchParams(id === "general" ? {} : { section: id }, { replace: true })
+  }
 
   return (
     <div className="mx-auto flex w-full max-w-[1340px] flex-col gap-4 p-4 md:p-6">
@@ -591,8 +360,8 @@ export function SettingsPage() {
         <div className="min-w-0">
           {active === "general" && <GeneralSection />}
           {active === "sources" && <SourcesSection />}
-          {active === "billing" && <BillingSection />}
-          {active === "plans" && <PlansSection />}
+          {active === "plans" && <SubscriptionManager />}
+          {active === "billing" && <BalanceCard />}
         </div>
       </div>
     </div>

@@ -136,12 +136,16 @@ export function getCheckoutMode(
 export function CheckoutSheet({
   planId,
   subscription,
+  usage,
   onOpenChange,
   onComplete,
 }: {
   // null → closed. A non-null paid plan id opens the panel.
   planId: string | null
   subscription?: Subscription
+  // Current resource usage — lets a fresh subscription (trial/expired) block
+  // plans whose limits are below what the account already uses.
+  usage?: Record<PlanFeatureKey, number>
   onOpenChange: (open: boolean) => void
   onComplete?: () => void
 }) {
@@ -206,6 +210,7 @@ export function CheckoutSheet({
               plan={plan}
               mode={mode}
               subscription={subscription}
+              usage={usage}
               onOpenChange={onOpenChange}
               onComplete={onComplete}
             />
@@ -220,12 +225,14 @@ function CheckoutBody({
   plan,
   mode,
   subscription,
+  usage,
   onOpenChange,
   onComplete,
 }: {
   plan: Plan
   mode: CheckoutMode
   subscription?: Subscription
+  usage?: Record<PlanFeatureKey, number>
   onOpenChange: (open: boolean) => void
   onComplete?: () => void
 }) {
@@ -297,18 +304,26 @@ function CheckoutBody({
   // What the next full invoice (on the unchanged renewal date) will look like.
   const newRecurring = basePrice + addonsTotal
 
-  // --- Downgrade fit check ----------------------------------------------
-  // Current usage must fit inside the cheaper plan's included limits.
-  const fitIssues =
+  // --- Fit check --------------------------------------------------------
+  // Usage must fit the chosen plan's included limits. For a downgrade we read
+  // the active subscription; for a fresh subscription (trial/expired that still
+  // has resources) we read the usage passed in — so you can't pick a plan
+  // smaller than what the account already uses.
+  const checkUsage =
     mode === "downgrade" && subscription
-      ? PLAN_FEATURES.flatMap((feature) => {
-          const used = subscription.usage[feature.key] ?? 0
-          const limit = plan.limits[feature.key]
-          return used > limit
-            ? [{ key: feature.key, label: feature.label, used, limit }]
-            : []
-        })
-      : []
+      ? subscription.usage
+      : mode === "new"
+        ? usage
+        : undefined
+  const fitIssues = checkUsage
+    ? PLAN_FEATURES.flatMap((feature) => {
+        const used = checkUsage[feature.key] ?? 0
+        const limit = plan.limits[feature.key]
+        return used > limit
+          ? [{ key: feature.key, label: feature.label, used, limit }]
+          : []
+      })
+    : []
   const blocked = fitIssues.length > 0
 
   // --- Money charged right now ------------------------------------------
@@ -561,34 +576,65 @@ function CheckoutBody({
 
         <Separator className="bg-border/70" />
 
-        {/* ---- NEW: pay the full price now ---- */}
+        {/* ---- NEW: pay the full price now (blocked if usage doesn't fit) ---- */}
         {mode === "new" && (
           <>
-            <div className="flex items-baseline justify-between gap-3">
-              <span className="text-sm font-semibold">До сплати</span>
-              <div>
-                <span className="text-2xl font-extrabold tracking-tight tabular-nums">
-                  ${formatMoney(fullTotal)}
-                </span>
-                <span className="text-xs text-muted-foreground">
-                  {" "}
-                  / {periodLabel}
-                </span>
+            {blocked ? (
+              <div className="rounded-xl border border-destructive/40 bg-destructive/10 p-3">
+                <p className="flex items-center gap-1.5 text-sm font-semibold text-destructive">
+                  <IconAlertTriangle className="size-4 shrink-0" />
+                  Тариф {plan.name} замалий для вас
+                </p>
+                <ul className="mt-2 flex flex-col gap-1">
+                  {fitIssues.map((issue) => (
+                    <li
+                      key={issue.key}
+                      className="flex items-center justify-between gap-2 text-xs text-destructive"
+                    >
+                      <span>{issue.label}</span>
+                      <span className="tabular-nums">
+                        {issue.used} / ліміт {issue.limit}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+                <p className="mt-2 text-xs text-destructive/80">
+                  Зменшіть використання або оберіть тариф вище.
+                </p>
               </div>
-            </div>
-            <Separator className="bg-border/70" />
-            <BalanceRow />
-            {insufficient && <TopUpNote amount={chargeNow - BALANCE} />}
+            ) : (
+              <>
+                <div className="flex items-baseline justify-between gap-3">
+                  <span className="text-sm font-semibold">До сплати</span>
+                  <div>
+                    <span className="text-2xl font-extrabold tracking-tight tabular-nums">
+                      ${formatMoney(fullTotal)}
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      {" "}
+                      / {periodLabel}
+                    </span>
+                  </div>
+                </div>
+                <Separator className="bg-border/70" />
+                <BalanceRow />
+                {insufficient && <TopUpNote amount={chargeNow - BALANCE} />}
+              </>
+            )}
             <CtaBlock onCancel={() => onOpenChange(false)}>
               <Button
+                disabled={blocked}
                 className={cn(
                   "h-11 w-full gap-1.5 rounded-xl font-semibold",
-                  !insufficient &&
+                  !blocked &&
+                    !insufficient &&
                     "bg-lime-500 text-white shadow-sm shadow-lime-500/30 hover:bg-lime-600 dark:bg-lime-500 dark:hover:bg-lime-600"
                 )}
                 onClick={() => setDone(true)}
               >
-                {insufficient ? (
+                {blocked ? (
+                  "Тариф не підходить"
+                ) : insufficient ? (
                   <>
                     <IconWallet className="size-4" />
                     Поповнити та оформити
@@ -760,7 +806,7 @@ function CtaBlock({
         className="h-9 w-full rounded-xl font-medium text-muted-foreground"
         onClick={onCancel}
       >
-        Відмінити
+        Скасувати
       </Button>
     </div>
   )

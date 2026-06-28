@@ -1,19 +1,18 @@
 import {
-  IconAd,
+  IconAlertTriangle,
+  IconArrowRight,
   IconBell,
   IconCalendarEvent,
   IconChevronDown,
-  IconCrown,
-  IconDatabase,
+  IconCircleCheckFilled,
+  IconClock,
   IconExternalLink,
-  IconHeadset,
   IconLock,
   IconLogout,
   IconMoon,
   IconPlugConnected,
   IconSettings,
   IconSun,
-  IconUsers,
   IconWallet,
   type Icon,
 } from "@tabler/icons-react"
@@ -28,6 +27,15 @@ import { useTheme } from "@/components/theme-provider"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { useSubscription } from "@/features/billing/subscription-context"
+import { formatPlanDate } from "@/features/billing/checkout-sheet"
+import { PLAN_FEATURES } from "@/features/billing/plans"
+import {
+  cycleTotal,
+  daysUntil,
+  planById,
+  type SubState,
+} from "@/features/billing/subscription-state"
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -103,12 +111,7 @@ function DataSourcesMenu() {
   )
 }
 
-const TARIFF = "Pro"
-const TARIFF_PRICE = "$29 / міс"
-const BALANCE = "85 $"
-const RENEWAL = "12 липня 2026"
-
-// Static prototype usage for the hover card. `limit` = plan limit + add-ons.
+// Usage row for the hover card. `limit` = plan limit + add-ons.
 type UsageRow = {
   icon: Icon
   label: string
@@ -116,13 +119,6 @@ type UsageRow = {
   limit?: number
   locked?: boolean
 }
-
-const PLAN_USAGE_ROWS: UsageRow[] = [
-  { icon: IconAd, label: "Рекламні акаунти", used: 22, limit: 35 },
-  { icon: IconUsers, label: "Учасники команди", locked: true },
-  { icon: IconDatabase, label: "CRM", used: 1, limit: 2 },
-  { icon: IconHeadset, label: "Колцентри", used: 1, limit: 2 },
-]
 
 function UsageBar({ row }: { row: UsageRow }) {
   const pct =
@@ -162,25 +158,137 @@ function UsageBar({ row }: { row: UsageRow }) {
   )
 }
 
+function money(value: number) {
+  return Number.isInteger(value) ? `${value}` : value.toFixed(2)
+}
+
+type ChipTone = "ok" | "info" | "danger"
+
+// Everything the chip + tooltip need, derived from the live subscription state.
+function describeBilling(state: SubState) {
+  const plan = planById(state.planId)
+  const periodLabel = state.period === "yearly" ? "рік" : "місяць"
+  const price = `$${money(cycleTotal(state.planId, state.period, state.addons))} / ${periodLabel}`
+
+  if (state.status === "trialing") {
+    const d = daysUntil(state.trialEndsAt ?? state.renewalDate)
+    return {
+      tone: "info" as ChipTone,
+      icon: IconClock,
+      chipLabel: "Тріал",
+      title: "Пробний період",
+      badge: { label: "Тріал", cls: "bg-muted text-muted-foreground" },
+      meta: `${d} дн.`,
+      footerIcon: IconClock,
+      footerLabel: "Доступ до",
+      footerValue: formatPlanDate(state.trialEndsAt ?? state.renewalDate),
+      showUsage: true,
+    }
+  }
+  if (state.status === "past_due") {
+    return {
+      tone: "danger" as ChipTone,
+      icon: IconAlertTriangle,
+      chipLabel: "Прострочено",
+      title: "Оплата не пройшла",
+      badge: {
+        label: "Прострочено",
+        cls: "bg-destructive/10 text-destructive",
+      },
+      meta: price,
+      footerIcon: IconAlertTriangle,
+      footerLabel: "Поповніть до",
+      footerValue: formatPlanDate(state.graceUntil ?? state.renewalDate),
+      showUsage: true,
+    }
+  }
+  if (state.status === "expired") {
+    return {
+      tone: "danger" as ChipTone,
+      icon: IconLock,
+      chipLabel: "Без тарифу",
+      title: "Доступ закрито",
+      badge: { label: "Завершено", cls: "bg-destructive/10 text-destructive" },
+      meta: "",
+      footerIcon: IconArrowRight,
+      footerLabel: "Оформіть тариф, щоб відновити доступ",
+      footerValue: "",
+      showUsage: false,
+    }
+  }
+  return {
+    tone: "ok" as ChipTone,
+    icon: plan?.icon ?? IconCircleCheckFilled,
+    chipLabel: plan?.name ?? "Тариф",
+    title: plan?.name ?? "Тариф",
+    badge: {
+      label: "Активний",
+      cls: "bg-emerald-500/12 text-emerald-600 dark:text-emerald-400",
+    },
+    meta: price,
+    footerIcon: IconCalendarEvent,
+    footerLabel: state.autoRenew ? "Наступна оплата" : "Завершиться",
+    footerValue: formatPlanDate(state.renewalDate),
+    showUsage: true,
+  }
+}
+
+const CHIP_TONE: Record<ChipTone, { icon: string; ring: string }> = {
+  ok: { icon: "text-foreground", ring: "" },
+  info: { icon: "text-sky-500", ring: "border-sky-500/40 bg-sky-500/5" },
+  danger: {
+    icon: "text-destructive",
+    ring: "border-destructive/40 bg-destructive/5",
+  },
+}
+
 function BillingStatus() {
+  const { state, balance } = useSubscription()
+  const navigate = useNavigate()
+  const d = describeBilling(state)
+  const Icon = d.icon
+  const FooterIcon = d.footerIcon
+  const tone = CHIP_TONE[d.tone]
+  const plan = planById(state.planId)
+
+  const usageRows: UsageRow[] = PLAN_FEATURES.map((feature) => {
+    const limit =
+      (plan?.limits[feature.key] ?? 0) + (state.addons[feature.key] ?? 0)
+    return {
+      icon: feature.icon,
+      label: feature.label,
+      used: state.usage[feature.key],
+      limit,
+      locked: limit <= 0,
+    }
+  })
+
   return (
     <TooltipPrimitive.Provider delay={120}>
       <TooltipPrimitive.Root>
         <TooltipPrimitive.Trigger
           render={
-            <div className="hidden cursor-default items-center gap-2.5 rounded-md border bg-card px-2.5 py-1 sm:flex">
+            <button
+              type="button"
+              onClick={() => navigate("/settings?section=plans")}
+              aria-label="Керувати підпискою"
+              className={cn(
+                "hidden cursor-pointer items-center gap-2.5 rounded-md border bg-card px-2.5 py-1 transition-colors hover:bg-muted/60 sm:flex",
+                tone.ring
+              )}
+            >
               <div className="flex items-center gap-1.5">
-                <IconCrown className="size-4 text-amber-500" />
-                <span className="text-sm font-semibold">{TARIFF}</span>
+                <Icon className={cn("size-4", tone.icon)} />
+                <span className="text-sm font-semibold">{d.chipLabel}</span>
               </div>
               <Separator orientation="vertical" className="h-4!" />
               <div className="flex items-center gap-1.5">
                 <IconWallet className="size-4 text-muted-foreground" />
                 <span className="text-sm font-semibold tabular-nums">
-                  {BALANCE}
+                  {balance} $
                 </span>
               </div>
-            </div>
+            </button>
           }
         />
         <TooltipPrimitive.Portal>
@@ -193,38 +301,53 @@ function BillingStatus() {
             <TooltipPrimitive.Popup className="z-50 w-72 origin-(--transform-origin) overflow-hidden rounded-xl border bg-popover text-popover-foreground shadow-lg data-[side=bottom]:slide-in-from-top-2 data-[state=delayed-open]:animate-in data-[state=delayed-open]:fade-in-0 data-[state=delayed-open]:zoom-in-95 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95">
               {/* Plan header */}
               <div className="flex items-center justify-between gap-2 border-b p-3">
-                <div className="flex items-center gap-1.5">
-                  <IconCrown className="size-4 text-amber-500" />
-                  <span className="text-sm font-bold">{TARIFF}</span>
+                <div className="flex min-w-0 items-center gap-1.5">
+                  <Icon className={cn("size-4 shrink-0", tone.icon)} />
+                  <span className="truncate text-sm font-bold">{d.title}</span>
                   <Badge
                     variant="outline"
-                    className="border-transparent bg-emerald-500/12 text-[11px] text-emerald-600 dark:text-emerald-400"
+                    className={cn(
+                      "shrink-0 border-transparent text-[11px]",
+                      d.badge.cls
+                    )}
                   >
-                    Активний
+                    {d.badge.label}
                   </Badge>
                 </div>
-                <span className="text-xs tabular-nums text-muted-foreground">
-                  {TARIFF_PRICE}
-                </span>
+                {d.meta && (
+                  <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+                    {d.meta}
+                  </span>
+                )}
               </div>
 
               {/* Usage */}
-              <div className="flex flex-col gap-2.5 p-3">
-                <p className="text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
-                  Використання тарифу
-                </p>
-                {PLAN_USAGE_ROWS.map((row) => (
-                  <UsageBar key={row.label} row={row} />
-                ))}
+              {d.showUsage && (
+                <div className="flex flex-col gap-2.5 p-3">
+                  <p className="text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
+                    Використання тарифу
+                  </p>
+                  {usageRows.map((row) => (
+                    <UsageBar key={row.label} row={row} />
+                  ))}
+                </div>
+              )}
+
+              {/* State-specific footer */}
+              <div className="flex items-center justify-between gap-2 border-t p-3 text-xs">
+                <span className="flex min-w-0 items-center gap-1.5 text-muted-foreground">
+                  <FooterIcon className="size-3.5 shrink-0" />
+                  <span className="truncate">{d.footerLabel}</span>
+                </span>
+                {d.footerValue && (
+                  <span className="shrink-0 font-medium">{d.footerValue}</span>
+                )}
               </div>
 
-              {/* Renewal */}
-              <div className="flex items-center justify-between gap-2 border-t p-3 text-xs">
-                <span className="flex items-center gap-1.5 text-muted-foreground">
-                  <IconCalendarEvent className="size-3.5" />
-                  Наступна оплата
-                </span>
-                <span className="font-medium">{RENEWAL}</span>
+              {/* Manage hint — the whole chip is clickable */}
+              <div className="flex items-center justify-end gap-1 border-t bg-muted/30 px-3 py-2 text-[11px] font-medium text-muted-foreground">
+                Керувати підпискою
+                <IconArrowRight className="size-3" />
               </div>
 
               <TooltipPrimitive.Arrow className="z-50 size-2.5 translate-y-[calc(-50%-2px)] rotate-45 rounded-[2px] border-t border-l bg-popover data-[side=bottom]:top-1" />
