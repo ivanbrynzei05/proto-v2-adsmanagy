@@ -32,6 +32,20 @@ export type Portfolio = {
   primary?: boolean
 }
 
+// A single ad account, which always belongs to one business + one platform.
+export type AdAccount = {
+  id: string
+  name: string
+  platform: PlatformId
+  business: string // Portfolio (business account) id
+}
+
+// Whether ad spend could be tied to orders/products.
+//  ok         – matched (UTM present or campaign named "<productId> - ...")
+//  no_utm     – orders have no UTM tags for this campaign
+//  no_product – campaign name does not start with a product id
+export type MatchStatus = "ok" | "no_utm" | "no_product"
+
 // numeric metrics - everything the table can sort / total on
 export type MetricKey =
   | "leads"
@@ -57,11 +71,31 @@ export type MetricKey =
 export type Row = Record<MetricKey, number> & {
   name: string
   active: boolean
-  portfolio: string
+  portfolio: string // business account id
   platform: PlatformId
+  adAccount: string // ad account id
+  match: MatchStatus
   campaign?: string
   group?: string
 }
+
+// Metrics that come from CRM / order data — they can only be computed once ad
+// spend is matched to orders. When a row is unmatched these are shown as "—".
+export const CRM_METRIC_KEYS: MetricKey[] = [
+  "approves",
+  "approveRate",
+  "costPerApprove",
+  "breakEvenLeadPrice",
+  "buyoutRate",
+  "returns",
+  "ccCost",
+  "packaging",
+  "probableIncome",
+  "buyerIncome",
+  "ownerIncome",
+  "roi",
+  "romi",
+]
 
 export type ColumnGroup = "perf" | "money" | "derived"
 
@@ -331,9 +365,9 @@ function compute(r: RawCampaign): Computed {
 
 // ---- business portfolios (data source) ----
 export const PORTFOLIOS: Portfolio[] = [
-  { id: "p1", name: "Бізнес-портфоліо «Основне»", primary: true },
-  { id: "p2", name: "Бізнес-портфоліо «Тест-2»" },
-  { id: "p3", name: "Бізнес-портфоліо «Преміум»" },
+  { id: "p1", name: "Бізнес-акаунт «Основний»", primary: true },
+  { id: "p2", name: "Бізнес-акаунт «Тест-2»" },
+  { id: "p3", name: "Бізнес-акаунт «Преміум»" },
 ]
 // which portfolio each RAW campaign belongs to
 const PORTFOLIO_OF = [
@@ -372,10 +406,53 @@ const PLATFORM_OF: PlatformId[] = [
   "google",
 ]
 
+// ---- ad accounts (each sits under one business + one platform) ----
+export const AD_ACCOUNTS: AdAccount[] = [
+  { id: "fb_neo", name: "Neo Ads · Facebook", platform: "facebook", business: "p1" },
+  { id: "fb_neo2", name: "Neo Ads · Facebook 2", platform: "facebook", business: "p1" },
+  { id: "g_neo", name: "Neo Ads · Google", platform: "google", business: "p1" },
+  { id: "g_test", name: "Тест-кабінет · Google", platform: "google", business: "p2" },
+  { id: "tt_test", name: "Тест-кабінет · TikTok", platform: "tiktok", business: "p2" },
+  { id: "g_prem", name: "Prime · Google", platform: "google", business: "p3" },
+  { id: "tt_prem", name: "Prime · TikTok", platform: "tiktok", business: "p3" },
+]
+// which ad account each RAW campaign runs in (kept consistent with the arrays above)
+const AD_ACCOUNT_OF = [
+  "fb_neo", // 0
+  "g_neo", // 1
+  "fb_neo2", // 2
+  "tt_test", // 3
+  "fb_neo", // 4
+  "tt_prem", // 5
+  "g_test", // 6
+  "fb_neo2", // 7
+  "g_prem", // 8
+  "fb_neo", // 9
+  "tt_test", // 10
+  "g_prem", // 11
+]
+// which campaigns could NOT be tied to a product/orders, and why
+const MATCH_OF: MatchStatus[] = [
+  "ok", // 0 Neck Relax
+  "no_product", // 1 CleanMax X9 — name has no product id up front
+  "ok", // 2 BarberPro
+  "ok", // 3 PostureFix
+  "ok", // 4 FitWatch 7
+  "ok", // 5 AromaMist
+  "no_utm", // 6 SharpEdge — orders arrive without UTM tags
+  "ok", // 7 MoonLight
+  "ok", // 8 DryStep
+  "no_product", // 9 PulseGun — name has no product id up front
+  "ok", // 10 CarTidy
+  "ok", // 11 WarmHands
+]
+
 export const CAMPAIGNS: Row[] = RAW.map((r, i) => ({
   ...compute(r),
   portfolio: PORTFOLIO_OF[i],
   platform: PLATFORM_OF[i],
+  adAccount: AD_ACCOUNT_OF[i],
+  match: MATCH_OF[i],
 }))
 
 // ---- ad groups & ads (drill-down entities under a campaign) ----
@@ -415,6 +492,8 @@ RAW.forEach((r, ci) => {
       ...compute(gRaw),
       portfolio: PORTFOLIO_OF[ci],
       platform: PLATFORM_OF[ci],
+      adAccount: AD_ACCOUNT_OF[ci],
+      match: MATCH_OF[ci],
       campaign: r.name,
     })
     const aFracs = [0.6, 0.4]
@@ -426,6 +505,8 @@ RAW.forEach((r, ci) => {
         ...compute(aRaw),
         portfolio: PORTFOLIO_OF[ci],
         platform: PLATFORM_OF[ci],
+        adAccount: AD_ACCOUNT_OF[ci],
+        match: MATCH_OF[ci],
         campaign: r.name,
         group: gRaw.name,
       })
