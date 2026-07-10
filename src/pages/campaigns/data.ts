@@ -111,6 +111,11 @@ export type Column = {
 
 type RawCampaign = {
   name: string
+  // data source + product matching (was stored in parallel arrays before)
+  platform: PlatformId
+  adAccount: string
+  portfolio: string
+  match: MatchStatus
   active: boolean
   leads: number
   spend: number
@@ -124,175 +129,142 @@ type RawCampaign = {
   buyerPct: number
 }
 
-// raw inputs per campaign (the rest is computed)
+// Product catalogue: a campaign whose name starts with one of these ids can be
+// grouped and broken down by product. Names without an id can't be tied to a
+// product, so the table warns about them instead of grouping them.
+export const PRODUCTS: Record<string, string> = {
+  "1042": "Масажер для шиї Neck Relax",
+  "2087": "Робот-пилосос CleanMax X9",
+  "3310": "Тример для бороди BarberPro",
+  "4120": "Смарт-годинник FitWatch 7",
+  "5006": "Корсет для постави PostureFix",
+  "6033": "Набір кухонних ножів SharpEdge",
+  "7008": "Електросушарка для взуття DryStep",
+  "8102": "Органайзер для авто CarTidy",
+}
+
+// Pulls the leading product id out of a campaign name, e.g.
+// "1042 - Neck Relax | FB" → { id: "1042", rest: "Neck Relax | FB" }.
+// Names that don't start with an id return { id: null } and get a warning.
+export function parseProductId(name: string): { id: string | null; rest: string } {
+  const m = name.match(/^\s*#?(\d{3,6})\s*[-–—.:|·]\s*(.*\S)\s*$/)
+  if (m) return { id: m[1], rest: m[2] }
+  return { id: null, rest: name.trim() }
+}
+
+// raw inputs per campaign (the rest is computed). Several products now carry
+// more than one campaign (same id prefix) so the table can group them; a few
+// have no id prefix on purpose to demo the "no product breakdown" warning.
 const RAW: RawCampaign[] = [
+  // ── product 1042 · Масажер для шиї Neck Relax — 3 campaigns ──
   {
-    name: "Масажер для шиї Neck Relax",
+    name: "1042 - Neck Relax | FB широка",
+    platform: "facebook", adAccount: "fb_neo", portfolio: "p1", match: "ok",
     active: true,
-    leads: 1840,
-    spend: 73600,
-    approves: 712,
-    impressions: 412000,
-    clicks: 9100,
-    avgCheck: 1290,
-    margin: 520,
-    cogs: 410,
-    buyout: 0.66,
-    buyerPct: 0.3,
+    leads: 920, spend: 35300, approves: 372, impressions: 205000, clicks: 4600,
+    avgCheck: 1290, margin: 520, cogs: 410, buyout: 0.67, buyerPct: 0.3,
   },
   {
-    name: "Робот-пилосос CleanMax X9",
+    name: "1042 - Neck Relax | Google пошук",
+    platform: "google", adAccount: "g_neo", portfolio: "p1", match: "ok",
     active: true,
-    leads: 1320,
-    spend: 92400,
-    approves: 488,
-    impressions: 366000,
-    clicks: 6700,
-    avgCheck: 3490,
-    margin: 1180,
-    cogs: 1620,
-    buyout: 0.59,
-    buyerPct: 0.25,
+    leads: 610, spend: 26100, approves: 236, impressions: 128000, clicks: 2900,
+    avgCheck: 1290, margin: 520, cogs: 410, buyout: 0.64, buyerPct: 0.3,
   },
   {
-    name: "Тример для бороди BarberPro",
-    active: true,
-    leads: 2410,
-    spend: 67480,
-    approves: 1010,
-    impressions: 540000,
-    clicks: 13200,
-    avgCheck: 890,
-    margin: 360,
-    cogs: 240,
-    buyout: 0.71,
-    buyerPct: 0.3,
-  },
-  {
-    name: "Корсет для постави PostureFix",
-    active: true,
-    leads: 980,
-    spend: 31360,
-    approves: 402,
-    impressions: 248000,
-    clicks: 5400,
-    avgCheck: 740,
-    margin: 310,
-    cogs: 150,
-    buyout: 0.63,
-    buyerPct: 0.35,
-  },
-  {
-    name: "Смарт-годинник FitWatch 7",
-    active: true,
-    leads: 1660,
-    spend: 116200,
-    approves: 560,
-    impressions: 470000,
-    clicks: 8900,
-    avgCheck: 1990,
-    margin: 690,
-    cogs: 920,
-    buyout: 0.55,
-    buyerPct: 0.25,
-  },
-  {
-    name: "Зволожувач повітря AromaMist",
+    name: "1042 - Neck Relax | TikTok відео",
+    platform: "tiktok", adAccount: "tt_test", portfolio: "p2", match: "ok",
     active: false,
-    leads: 540,
-    spend: 16740,
-    approves: 196,
-    impressions: 142000,
-    clicks: 3100,
-    avgCheck: 990,
-    margin: 380,
-    cogs: 300,
-    buyout: 0.6,
-    buyerPct: 0.3,
+    leads: 310, spend: 12200, approves: 104, impressions: 79000, clicks: 1600,
+    avgCheck: 1290, margin: 520, cogs: 410, buyout: 0.63, buyerPct: 0.3,
   },
+  // ── product 2087 · Робот-пилосос CleanMax X9 — 2 campaigns ──
   {
-    name: "Набір кухонних ножів SharpEdge",
+    name: "2087 - CleanMax X9 | FB ретаргет",
+    platform: "facebook", adAccount: "fb_neo2", portfolio: "p1", match: "ok",
     active: true,
-    leads: 1120,
-    spend: 39200,
-    approves: 470,
-    impressions: 286000,
-    clicks: 6100,
-    avgCheck: 1150,
-    margin: 470,
-    cogs: 360,
-    buyout: 0.68,
-    buyerPct: 0.3,
+    leads: 720, spend: 50100, approves: 268, impressions: 198000, clicks: 3600,
+    avgCheck: 3490, margin: 1180, cogs: 1620, buyout: 0.6, buyerPct: 0.25,
   },
   {
-    name: "Лампа-нічник MoonLight",
+    name: "2087 - CleanMax X9 | Google",
+    platform: "google", adAccount: "g_prem", portfolio: "p3", match: "ok",
     active: true,
-    leads: 760,
-    spend: 19000,
-    approves: 318,
-    impressions: 198000,
-    clicks: 4600,
-    avgCheck: 640,
-    margin: 280,
-    cogs: 120,
-    buyout: 0.64,
-    buyerPct: 0.35,
+    leads: 600, spend: 42300, approves: 220, impressions: 168000, clicks: 3100,
+    avgCheck: 3490, margin: 1180, cogs: 1620, buyout: 0.58, buyerPct: 0.25,
+  },
+  // ── product 3310 · Тример для бороди BarberPro — 2 campaigns ──
+  {
+    name: "3310 - BarberPro | FB широка",
+    platform: "facebook", adAccount: "fb_neo", portfolio: "p1", match: "ok",
+    active: true,
+    leads: 1400, spend: 39200, approves: 588, impressions: 314000, clicks: 7700,
+    avgCheck: 890, margin: 360, cogs: 240, buyout: 0.72, buyerPct: 0.3,
   },
   {
-    name: "Електросушарка для взуття DryStep",
+    name: "3310 - BarberPro | TikTok",
+    platform: "tiktok", adAccount: "tt_prem", portfolio: "p3", match: "ok",
+    active: true,
+    leads: 1010, spend: 28280, approves: 422, impressions: 226000, clicks: 5500,
+    avgCheck: 890, margin: 360, cogs: 240, buyout: 0.7, buyerPct: 0.3,
+  },
+  // ── single-campaign products (unique id, shown with a product chip) ──
+  {
+    name: "5006 - Корсет для постави PostureFix",
+    platform: "facebook", adAccount: "fb_neo", portfolio: "p1", match: "ok",
+    active: true,
+    leads: 980, spend: 31360, approves: 402, impressions: 248000, clicks: 5400,
+    avgCheck: 740, margin: 310, cogs: 150, buyout: 0.63, buyerPct: 0.35,
+  },
+  {
+    name: "4120 - Смарт-годинник FitWatch 7",
+    platform: "facebook", adAccount: "fb_neo", portfolio: "p1", match: "ok",
+    active: true,
+    leads: 1660, spend: 116200, approves: 560, impressions: 470000, clicks: 8900,
+    avgCheck: 1990, margin: 690, cogs: 920, buyout: 0.55, buyerPct: 0.25,
+  },
+  {
+    name: "6033 - Набір ножів SharpEdge",
+    platform: "google", adAccount: "g_test", portfolio: "p2", match: "ok",
+    active: true,
+    leads: 1120, spend: 39200, approves: 470, impressions: 286000, clicks: 6100,
+    avgCheck: 1150, margin: 470, cogs: 360, buyout: 0.68, buyerPct: 0.3,
+  },
+  {
+    name: "7008 - Сушарка для взуття DryStep",
+    platform: "google", adAccount: "g_prem", portfolio: "p3", match: "ok",
     active: false,
-    leads: 410,
-    spend: 11070,
-    approves: 158,
-    impressions: 108000,
-    clicks: 2400,
-    avgCheck: 590,
-    margin: 250,
-    cogs: 110,
-    buyout: 0.57,
-    buyerPct: 0.3,
+    leads: 410, spend: 11070, approves: 158, impressions: 108000, clicks: 2400,
+    avgCheck: 590, margin: 250, cogs: 110, buyout: 0.57, buyerPct: 0.3,
+  },
+  {
+    name: "8102 - Органайзер CarTidy",
+    platform: "tiktok", adAccount: "tt_test", portfolio: "p2", match: "ok",
+    active: true,
+    leads: 880, spend: 22000, approves: 372, impressions: 210000, clicks: 5000,
+    avgCheck: 690, margin: 300, cogs: 130, buyout: 0.69, buyerPct: 0.35,
+  },
+  // ── campaigns with NO product id up front — can't be split by product ──
+  {
+    name: "Розпродаж тижня — мікс товарів",
+    platform: "facebook", adAccount: "fb_neo2", portfolio: "p1", match: "no_product",
+    active: true,
+    leads: 1450, spend: 40600, approves: 300, impressions: 300000, clicks: 7000,
+    avgCheck: 850, margin: 300, cogs: 200, buyout: 0.55, buyerPct: 0.3,
   },
   {
     name: "Масажний пістолет PulseGun",
+    platform: "google", adAccount: "g_prem", portfolio: "p3", match: "no_product",
     active: true,
-    leads: 1290,
-    spend: 90300,
-    approves: 442,
-    impressions: 352000,
-    clicks: 7200,
-    avgCheck: 2290,
-    margin: 820,
-    cogs: 1080,
-    buyout: 0.58,
-    buyerPct: 0.25,
+    leads: 1290, spend: 90300, approves: 442, impressions: 352000, clicks: 7200,
+    avgCheck: 2290, margin: 820, cogs: 1080, buyout: 0.58, buyerPct: 0.25,
   },
   {
-    name: "Органайзер для авто CarTidy",
-    active: true,
-    leads: 880,
-    spend: 22000,
-    approves: 372,
-    impressions: 210000,
-    clicks: 5000,
-    avgCheck: 690,
-    margin: 300,
-    cogs: 130,
-    buyout: 0.69,
-    buyerPct: 0.35,
-  },
-  {
-    name: "Грілка USB WarmHands",
+    name: "Зволожувач повітря AromaMist",
+    platform: "tiktok", adAccount: "tt_prem", portfolio: "p3", match: "no_product",
     active: false,
-    leads: 330,
-    spend: 8910,
-    approves: 124,
-    impressions: 96000,
-    clicks: 2100,
-    avgCheck: 540,
-    margin: 230,
-    cogs: 90,
-    buyout: 0.61,
-    buyerPct: 0.3,
+    leads: 540, spend: 16740, approves: 196, impressions: 142000, clicks: 3100,
+    avgCheck: 990, margin: 380, cogs: 300, buyout: 0.6, buyerPct: 0.3,
   },
 ]
 
@@ -369,41 +341,11 @@ export const PORTFOLIOS: Portfolio[] = [
   { id: "p2", name: "Бізнес-акаунт «Тест-2»" },
   { id: "p3", name: "Бізнес-акаунт «Преміум»" },
 ]
-// which portfolio each RAW campaign belongs to
-const PORTFOLIO_OF = [
-  "p1",
-  "p1",
-  "p1",
-  "p2",
-  "p1",
-  "p3",
-  "p2",
-  "p1",
-  "p3",
-  "p1",
-  "p2",
-  "p3",
-]
-
 // ---- ad accounts / platforms (data source) ----
 export const PLATFORMS: Platform[] = [
   { id: "facebook", label: "Facebook", short: "f", color: "#1877F2" },
   { id: "google", label: "Google", short: "G", color: "#34A853" },
   { id: "tiktok", label: "TikTok", short: "T", color: "#EE1D52" },
-]
-const PLATFORM_OF: PlatformId[] = [
-  "facebook",
-  "google",
-  "facebook",
-  "tiktok",
-  "facebook",
-  "tiktok",
-  "google",
-  "facebook",
-  "google",
-  "facebook",
-  "tiktok",
-  "google",
 ]
 
 // ---- ad accounts (each sits under one business + one platform) ----
@@ -416,43 +358,13 @@ export const AD_ACCOUNTS: AdAccount[] = [
   { id: "g_prem", name: "Prime · Google", platform: "google", business: "p3" },
   { id: "tt_prem", name: "Prime · TikTok", platform: "tiktok", business: "p3" },
 ]
-// which ad account each RAW campaign runs in (kept consistent with the arrays above)
-const AD_ACCOUNT_OF = [
-  "fb_neo", // 0
-  "g_neo", // 1
-  "fb_neo2", // 2
-  "tt_test", // 3
-  "fb_neo", // 4
-  "tt_prem", // 5
-  "g_test", // 6
-  "fb_neo2", // 7
-  "g_prem", // 8
-  "fb_neo", // 9
-  "tt_test", // 10
-  "g_prem", // 11
-]
-// which campaigns could NOT be tied to a product/orders, and why
-const MATCH_OF: MatchStatus[] = [
-  "ok", // 0 Neck Relax
-  "no_product", // 1 CleanMax X9 — name has no product id up front
-  "ok", // 2 BarberPro
-  "ok", // 3 PostureFix
-  "ok", // 4 FitWatch 7
-  "ok", // 5 AromaMist
-  "no_utm", // 6 SharpEdge — orders arrive without UTM tags
-  "ok", // 7 MoonLight
-  "ok", // 8 DryStep
-  "no_product", // 9 PulseGun — name has no product id up front
-  "ok", // 10 CarTidy
-  "ok", // 11 WarmHands
-]
 
-export const CAMPAIGNS: Row[] = RAW.map((r, i) => ({
+export const CAMPAIGNS: Row[] = RAW.map((r) => ({
   ...compute(r),
-  portfolio: PORTFOLIO_OF[i],
-  platform: PLATFORM_OF[i],
-  adAccount: AD_ACCOUNT_OF[i],
-  match: MATCH_OF[i],
+  portfolio: r.portfolio,
+  platform: r.platform,
+  adAccount: r.adAccount,
+  match: r.match,
 }))
 
 // ---- ad groups & ads (drill-down entities under a campaign) ----
@@ -480,33 +392,37 @@ export const AD_GROUPS: Row[] = []
 export const ADS: Row[] = []
 
 RAW.forEach((r, ci) => {
-  const short = r.name.split(" ").slice(0, 2).join(" ")
+  // keep the product id (if any) as a prefix so child rows stay tied to it,
+  // then a short readable stem for the group / ad names
+  const { id, rest } = parseProductId(r.name)
+  const prefix = id ? id + " - " : ""
+  const short = rest.split(" ").slice(0, 2).join(" ")
   const nGroups = 2 + (ci % 2) // 2 or 3 groups
   const gFracs = nGroups === 3 ? [0.45, 0.33, 0.22] : [0.6, 0.4]
   gFracs.forEach((gf, gi) => {
     const gRaw = scaleRaw(r, gf, {
       buyout: Math.min(0.86, Math.max(0.42, r.buyout + (gi - 1) * 0.03)),
     })
-    gRaw.name = short + " · " + GROUP_LABELS[gi]
+    gRaw.name = prefix + short + " · " + GROUP_LABELS[gi]
     AD_GROUPS.push({
       ...compute(gRaw),
-      portfolio: PORTFOLIO_OF[ci],
-      platform: PLATFORM_OF[ci],
-      adAccount: AD_ACCOUNT_OF[ci],
-      match: MATCH_OF[ci],
+      portfolio: r.portfolio,
+      platform: r.platform,
+      adAccount: r.adAccount,
+      match: r.match,
       campaign: r.name,
     })
     const aFracs = [0.6, 0.4]
     aFracs.forEach((af, ai) => {
       const aRaw = scaleRaw(gRaw, af)
       aRaw.name =
-        GROUP_LABELS[gi] + " · " + AD_LABELS[(gi + ai) % AD_LABELS.length]
+        prefix + GROUP_LABELS[gi] + " · " + AD_LABELS[(gi + ai) % AD_LABELS.length]
       ADS.push({
         ...compute(aRaw),
-        portfolio: PORTFOLIO_OF[ci],
-        platform: PLATFORM_OF[ci],
-        adAccount: AD_ACCOUNT_OF[ci],
-        match: MATCH_OF[ci],
+        portfolio: r.portfolio,
+        platform: r.platform,
+        adAccount: r.adAccount,
+        match: r.match,
         campaign: r.name,
         group: gRaw.name,
       })

@@ -1,22 +1,30 @@
-import { useEffect, useMemo, useRef, useState } from "react"
+import { Fragment, useEffect, useMemo, useRef, useState } from "react"
 import {
   IconAdjustmentsHorizontal,
+  IconAlertTriangle,
   IconArrowsSort,
   IconArrowsSplit2,
+  IconArrowUpRight,
   IconBox,
   IconBriefcase,
   IconCalendar,
   IconChevronDown,
   IconChevronRight,
+  IconChevronsDown,
+  IconChevronsUp,
   IconChevronUp,
   IconClock,
   IconColumns,
   IconDownload,
+  IconHelpCircle,
   IconLayoutGrid,
+  IconPackage,
+  IconPlugConnectedX,
   IconRefresh,
   IconSearch,
   IconSpeakerphone,
   IconStack2,
+  IconTag,
   IconWorld,
   IconX,
   type Icon as TablerIcon,
@@ -39,6 +47,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
+import { Skeleton } from "@/components/ui/skeleton"
 import { Switch } from "@/components/ui/switch"
 import {
   Table,
@@ -49,6 +58,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
 import {
   AD_ACCOUNTS,
@@ -57,11 +67,14 @@ import {
   CAMPAIGNS,
   COL_GROUPS,
   COLUMNS,
+  CRM_METRIC_KEYS,
   DATE_PRESETS,
   fmt,
+  parseProductId,
   PLATFORMS,
   PORTFOLIOS,
   PRESETS,
+  PRODUCTS,
   totals,
   type Column,
   type MetricKey,
@@ -110,7 +123,8 @@ function PlatformBadge({ id, size = 15 }: { id: PlatformId; size?: number }) {
 }
 
 // ---- single metric cell: pill / mini-bar / plain number ----
-function ValueCell({ row, col }: { row: Row; col: Column }) {
+// accepts a full Row or an aggregated { metric: value } map (product-group total)
+function ValueCell({ row, col }: { row: Record<MetricKey, number>; col: Column }) {
   const v = row[col.key]
 
   if (
@@ -179,8 +193,18 @@ const RATE_KEYS: MetricKey[] = [
   "roi",
   "romi",
 ]
-const STATUS_LABELS: Record<string, string> = { all: "Усі", on: "Активні", off: "Вимкнені" }
-const BREAKDOWNS = ["Без розбивки", "По кабінетах", "По днях", "По колцентрах", "По баєрах"]
+// "По товарам" groups campaigns by product id (default); "По кампаніям" is the
+// flat list; the rest fan each row out into sub-rows (see BREAKDOWN_VALUES).
+const BREAKDOWN_PRODUCT = "По товарам"
+const BREAKDOWN_CAMPAIGN = "По кампаніям"
+const BREAKDOWNS = [
+  BREAKDOWN_PRODUCT,
+  BREAKDOWN_CAMPAIGN,
+  "По кабінетах",
+  "По днях",
+  "По колцентрах",
+  "По баєрах",
+]
 
 // Values each breakdown splits a row into (Ads-Manager style). The first entry
 // ("Без розбивки") means "no breakdown" and is handled specially.
@@ -226,6 +250,89 @@ const HEADER_EMPH = "bg-[color-mix(in_oklab,var(--primary)_9%,var(--card))]"
 const FOOTER_BG = "bg-[color-mix(in_oklab,var(--muted)_60%,var(--card))]"
 // right edge of the frozen name column — a hairline that reads as a seam while scrolling
 const FROZEN_EDGE = "shadow-[1px_0_0_0_var(--border)]"
+
+// product-group header row — a soft primary tint so it reads as a "shelf" the
+// campaigns sit under; the frozen variant is opaque so scrolled cells can't bleed through
+const GROUP_BG =
+  "bg-[color-mix(in_oklab,var(--primary)_6%,var(--card))] hover:bg-[color-mix(in_oklab,var(--primary)_11%,var(--card))]"
+const GROUP_FROZEN =
+  "bg-[color-mix(in_oklab,var(--primary)_6%,var(--card))] group-hover/row:bg-[color-mix(in_oklab,var(--primary)_11%,var(--card))]"
+// child campaign rows sit on a faint muted wash so the nesting is obvious
+const CHILD_BG =
+  "bg-[color-mix(in_oklab,var(--muted)_28%,var(--card))] hover:bg-[color-mix(in_oklab,var(--muted)_45%,var(--card))]"
+const CHILD_FROZEN =
+  "bg-[color-mix(in_oklab,var(--muted)_28%,var(--card))] group-hover/row:bg-[color-mix(in_oklab,var(--muted)_45%,var(--card))]"
+
+
+// Ukrainian plural picker (1 кампанія / 2 кампанії / 5 кампаній)
+function plural(n: number, one: string, few: string, many: string) {
+  const m10 = n % 10
+  const m100 = n % 100
+  if (m10 === 1 && m100 !== 11) return one
+  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return few
+  return many
+}
+
+// amber warning shown next to campaigns with no product id in the name
+function NoProductWarning() {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Badge className="shrink-0 gap-1 border-transparent bg-amber-500/15 text-amber-700 dark:bg-amber-400/15 dark:text-amber-400">
+            <IconAlertTriangle className="size-3" />
+            Без ID товару
+          </Badge>
+        }
+      />
+      <TooltipContent className="max-w-[260px] leading-relaxed">
+        Назва не починається з ID товару — розбивка по товару недоступна. Додайте
+        ID на початок назви, напр. «1042 - …».
+      </TooltipContent>
+    </Tooltip>
+  )
+}
+
+// CRM (order-derived) metrics — the ones that can't always be attributed to a
+// deeper level than the campaign
+const CRM_KEYS = new Set(CRM_METRIC_KEYS)
+
+// Emulates attribution gaps: below the campaign level (ad groups / ads) some
+// rows can't have their order data resolved. Deterministic ~1/3 subset so the
+// demo always shows a believable mix.
+function crmUnresolved(name: string, entity: string) {
+  if (entity === "Кампанії") return false
+  let h = 0
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0
+  return h % 3 === 0
+}
+
+// "no data at this level" cell — reads as clickable, opens an explanation (demo)
+function UnknownCell() {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <button
+            type="button"
+            className="inline-flex items-center gap-1 rounded-md border border-dashed border-amber-500/50 px-1.5 py-0.5 text-[11px] font-medium text-amber-600 hover:bg-amber-500/10 dark:text-amber-400"
+          >
+            <IconHelpCircle className="size-3" />
+            н/д
+          </button>
+        }
+      />
+      <TooltipContent className="max-w-[240px] leading-relaxed">
+        <span className="flex flex-col gap-1">
+          <span>Немає даних на цьому рівні.</span>
+          <span className="font-medium underline underline-offset-2">
+            Дізнатися чому →
+          </span>
+        </span>
+      </TooltipContent>
+    </Tooltip>
+  )
+}
 
 // compact "time ago" label (щойно / 5 хв тому / 2 год тому / 3 дн тому)
 function relativeTime(from: Date, nowMs: number): string {
@@ -301,6 +408,20 @@ function RefreshControl() {
 type SortKey = "name" | "active" | MetricKey
 type Indexed = Row & { _i: number; _breakdown?: string }
 
+// One line in the grouped view: a product shelf (2+ campaigns), a single
+// product-tagged campaign, or a campaign with no product id at all.
+type DisplayEntry =
+  | {
+      kind: "group"
+      id: string
+      product: string
+      rows: Indexed[]
+      agg: Record<MetricKey, number>
+      activeCount: number
+    }
+  | { kind: "single"; id: string; row: Indexed }
+  | { kind: "orphan"; row: Indexed }
+
 export function CampaignsPage() {
   const allCols = COLUMNS
   const [visible, setVisible] = useState<Record<string, boolean>>(() =>
@@ -355,7 +476,6 @@ export function CampaignsPage() {
   }
 
   const [query, setQuery] = useState("")
-  const [statusFilter, setStatusFilter] = useState<"all" | "on" | "off">("all")
   const [sel, setSel] = useState<Set<number>>(() => new Set())
   const [activeMap, setActiveMap] = useState<Record<string, boolean>>({})
   const [entity, setEntity] = useState("Кампанії")
@@ -375,10 +495,29 @@ export function CampaignsPage() {
     groups: [],
   })
   const [dateLabel, setDateLabel] = useState(DATE_PRESETS[2])
-  const [breakdown, setBreakdown] = useState(BREAKDOWNS[0])
+  // "Розбивка" is the primary mode selector; "По товарам" groups by product id
+  const [breakdown, setBreakdown] = useState(BREAKDOWN_PRODUCT)
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set())
+
+  // loading skeletons: a full-page one on first load, and a short table pulse
+  // whenever the breakdown / entity changes so the switch feels "live"
+  const [firstLoad, setFirstLoad] = useState(true)
+  const [switching, setSwitching] = useState(false)
+  const pulseRef = useRef<number | null>(null)
+  useEffect(() => {
+    const t = window.setTimeout(() => setFirstLoad(false), 750)
+    return () => window.clearTimeout(t)
+  }, [])
+  function pulse(ms = 450) {
+    setSwitching(true)
+    if (pulseRef.current) window.clearTimeout(pulseRef.current)
+    pulseRef.current = window.setTimeout(() => setSwitching(false), ms)
+  }
 
   const cols = allCols.filter((c) => visible[c.key])
   const isLeaf = entity === "Оголошення"
+  // "По товарам" groups by product id on every level (campaigns / groups / ads)
+  const grouped = breakdown === BREAKDOWN_PRODUCT
 
   // level 2 — ad accounts on the currently chosen platform(s)
   const scopedAccounts = useMemo(
@@ -422,6 +561,7 @@ export function CampaignsPage() {
   function switchBreakdown(b: string) {
     setBreakdown(b)
     setSel(new Set())
+    pulse()
   }
   const ALL_ACCOUNTS = () => new Set(AD_ACCOUNTS.map((a) => a.id))
   const ALL_BUSINESSES = () => new Set(PORTFOLIOS.map((p) => p.id))
@@ -485,6 +625,20 @@ export function CampaignsPage() {
     }
     setSel(new Set())
   }
+  // click a product-group name to open the next level for all its campaigns
+  function drillProduct(e: Extract<DisplayEntry, { kind: "group" }>) {
+    if (entity === "Кампанії") {
+      setDrill({ campaigns: e.rows.map((r) => r.name), groups: [] })
+      setEntity("Групи оголошень")
+    } else if (entity === "Групи оголошень") {
+      const campaigns = Array.from(new Set(e.rows.map((r) => r.campaign ?? "")))
+      setDrill({ campaigns, groups: e.rows.map((r) => r.name) })
+      setEntity("Оголошення")
+    }
+    // keep the same product open on the next level so its rows are visible
+    setExpanded((s) => new Set(s).add(e.id))
+    setSel(new Set())
+  }
 
   const counts = useMemo(
     () => ({
@@ -496,12 +650,10 @@ export function CampaignsPage() {
     [platforms, adAccounts, businesses, drill]
   )
 
-  // data-source + search + status filters (shared by the table and the counters)
+  // data-source + search filters (shared by the table and the counters)
   function passesFilters(e: string, c: Row) {
     if (!baseFilter(e, c)) return false
     if (query.trim() && !c.name.toLowerCase().includes(query.toLowerCase())) return false
-    if (statusFilter === "on" && !c.active) return false
-    if (statusFilter === "off" && c.active) return false
     return true
   }
 
@@ -538,9 +690,119 @@ export function CampaignsPage() {
     }
     return r
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [entity, platforms, adAccounts, businesses, drill, query, statusFilter, sort, activeMap, breakdown])
+  }, [entity, platforms, adAccounts, businesses, drill, query, sort, activeMap, breakdown])
 
   const foot = useMemo(() => totals(rows), [rows])
+
+  // share of orders (approves) that can't be synced to a product — orders on
+  // campaigns whose name has no product id
+  const unsyncedPct = useMemo(() => {
+    let total = 0
+    let bad = 0
+    for (const c of CAMPAIGNS) {
+      total += c.approves
+      if (c.match !== "ok") bad += c.approves
+    }
+    return total ? Math.round((bad / total) * 100) : 0
+  }, [])
+
+  // Fold the flat, already-filtered/sorted rows into product shelves. Rows keep
+  // their natural order; a product with 2+ campaigns becomes a collapsible
+  // group, a lone product-tagged campaign becomes a "single", and a campaign
+  // with no id prefix becomes an "orphan" (warned about, never grouped).
+  const entries = useMemo<DisplayEntry[]>(() => {
+    if (!grouped) return []
+    const map = new Map<string, Indexed[]>()
+    const order: Array<{ t: "g"; id: string } | { t: "o"; row: Indexed }> = []
+    for (const r of rows) {
+      const { id } = parseProductId(r.name)
+      if (!id) {
+        order.push({ t: "o", row: r })
+        continue
+      }
+      const arr = map.get(id)
+      if (arr) arr.push(r)
+      else {
+        map.set(id, [r])
+        order.push({ t: "g", id })
+      }
+    }
+    const list: DisplayEntry[] = order.map((o) => {
+      if (o.t === "o") return { kind: "orphan", row: o.row }
+      const rs = map.get(o.id)!
+      if (rs.length === 1) return { kind: "single", id: o.id, row: rs[0] }
+      return {
+        kind: "group",
+        id: o.id,
+        product: PRODUCTS[o.id] ?? parseProductId(rs[0].name).rest,
+        rows: rs,
+        agg: totals(rs),
+        activeCount: rs.filter((r) => r.active).length,
+      }
+    })
+    // Three tiers, always in this order: product groups first, then lone
+    // product-tagged campaigns, then the no-id campaigns pinned to the bottom.
+    // The active sort only reorders rows *within* each tier.
+    const groupsTier = list.filter((e) => e.kind === "group")
+    const singlesTier = list.filter((e) => e.kind === "single")
+    const orphansTier = list.filter((e) => e.kind === "orphan")
+    if (sort.key) {
+      const key = sort.key
+      const dir = sort.dir === "asc" ? 1 : -1
+      const val = (e: DisplayEntry): number | string => {
+        if (key === "name")
+          return e.kind === "group"
+            ? e.product.toLowerCase()
+            : parseProductId(e.row.name).rest.toLowerCase()
+        if (key === "active")
+          return e.kind === "group" ? e.activeCount : e.row.active ? 1 : 0
+        return (e.kind === "group" ? e.agg[key] : e.row[key]) as number
+      }
+      const byKey = (a: DisplayEntry, b: DisplayEntry) => {
+        const av = val(a)
+        const bv = val(b)
+        const cmp =
+          typeof av === "string" ? av.localeCompare(bv as string) : av - (bv as number)
+        return cmp * dir
+      }
+      groupsTier.sort(byKey)
+      singlesTier.sort(byKey)
+      orphansTier.sort(byKey)
+    }
+    return [...groupsTier, ...singlesTier, ...orphansTier]
+  }, [rows, grouped, sort])
+
+  const groupIds = useMemo(
+    () => entries.flatMap((e) => (e.kind === "group" ? [e.id] : [])),
+    [entries]
+  )
+  const orphanCount = useMemo(
+    () => entries.reduce((n, e) => n + (e.kind === "orphan" ? 1 : 0), 0),
+    [entries]
+  )
+  const allExpanded = groupIds.length > 0 && groupIds.every((id) => expanded.has(id))
+
+  function toggleExpand(id: string) {
+    setExpanded((s) => {
+      const n = new Set(s)
+      if (n.has(id)) n.delete(id)
+      else n.add(id)
+      return n
+    })
+  }
+  function toggleAllExpand() {
+    setExpanded(allExpanded ? new Set() : new Set(groupIds))
+  }
+  function setGroupSel(childIdx: number[], select: boolean) {
+    setSel((s) => {
+      const n = new Set(s)
+      for (const i of childIdx) {
+        if (select) n.add(i)
+        else n.delete(i)
+      }
+      return n
+    })
+  }
 
   // three states per column: desc → asc → none (unsorted) → desc …
   function toggleSort(key: SortKey) {
@@ -600,13 +862,388 @@ export function CampaignsPage() {
   const W_SELECT = 44
   const W_TOGGLE = 52
   const nameLeft = W_SELECT + (showToggleCol ? W_TOGGLE : 0)
-  const frozenBg = (selected: boolean) => (selected ? FROZEN_SEL : FROZEN_BASE)
+  // opaque tone for the frozen cells; child rows get the muted wash
+  const frozenBg = (selected: boolean, child = false) =>
+    selected ? FROZEN_SEL : child ? CHILD_FROZEN : FROZEN_BASE
+  const rowBg = (selected: boolean, child = false) =>
+    selected ? ROW_SEL : child ? CHILD_BG : ROW_HOVER
+
+  // ---- a single campaign row (also used for group children / orphans) ----
+  // the full original campaign name is always shown, including the id prefix
+  type RowOpts = {
+    child?: boolean // indented under a product group
+    warn?: boolean // show the "no product id" warning
+  }
+  function renderRow(c: Indexed, opts: RowOpts = {}) {
+    const selected = sel.has(c._i)
+    const child = !!opts.child
+    const displayName = c.name
+    return (
+      <TableRow key={c._i} className={cn("group/row border-0", rowBg(selected, child))}>
+        <TableCell
+          className={cn("sticky left-0 z-20 border-b px-0 text-center", frozenBg(selected, child))}
+          style={{ width: W_SELECT, minWidth: W_SELECT }}
+        >
+          <div className="flex justify-center">
+            <Checkbox
+              checked={selected}
+              onCheckedChange={() => toggleSel(c._i)}
+              aria-label="Обрати рядок"
+            />
+          </div>
+        </TableCell>
+        {showToggleCol && (
+          <TableCell
+            className={cn("sticky z-20 border-b px-0 text-center", frozenBg(selected, child))}
+            style={{ width: W_TOGGLE, minWidth: W_TOGGLE, left: W_SELECT }}
+          >
+            <div className="flex justify-center">
+              <RowSwitch active={c.active} onChange={(val) => setActive(c, val)} />
+            </div>
+          </TableCell>
+        )}
+        <TableCell
+          className={cn(
+            "sticky z-20 overflow-hidden border-b py-2 pl-3",
+            FROZEN_EDGE,
+            frozenBg(selected, child)
+          )}
+          style={{
+            width: colWidths.name,
+            minWidth: colWidths.name,
+            maxWidth: colWidths.name,
+            left: nameLeft,
+          }}
+        >
+          <div className={cn("flex min-w-0 gap-1.5", child ? "items-stretch" : "items-center")}>
+            {child && (
+              <span className="ml-1.5 w-3 shrink-0 self-stretch border-l border-border/60" />
+            )}
+            <div className={cn("flex min-w-0 flex-col gap-0.5", child && "justify-center")}>
+              <div className="flex min-w-0 items-center gap-1.5">
+                {c._breakdown ? (
+                  <span className="flex min-w-0 items-center gap-2 font-semibold">
+                    <IconArrowsSplit2 className="size-3.5 shrink-0 text-muted-foreground" />
+                    <span className="truncate">{c._breakdown}</span>
+                  </span>
+                ) : isLeaf ? (
+                  <span className="flex min-w-0 items-center gap-2 font-semibold">
+                    <PlatformBadge id={c.platform} />
+                    <span className="truncate">{displayName}</span>
+                  </span>
+                ) : (
+                  <button
+                    onClick={() => drillRow(c)}
+                    title={
+                      "Відкрити " +
+                      (entity === "Кампанії" ? "групи оголошень" : "оголошення")
+                    }
+                    className={cn(
+                      "flex min-w-0 items-center gap-2 text-primary hover:underline",
+                      child ? "font-medium" : "font-semibold"
+                    )}
+                  >
+                    <PlatformBadge id={c.platform} />
+                    <span className="truncate">{displayName}</span>
+                    <IconChevronDown className="size-3.5 shrink-0 -rotate-90 opacity-55" />
+                  </button>
+                )}
+                {opts.warn && <NoProductWarning />}
+              </div>
+              <div className="flex min-w-0 items-center gap-1.5 text-[11px] text-muted-foreground">
+                {c._breakdown ? (
+                  <span className="flex min-w-0 items-center gap-1.5">
+                    <PlatformBadge id={c.platform} size={12} />
+                    <span className="truncate">{c.name}</span>
+                  </span>
+                ) : (
+                  <>
+                    <span
+                      className={cn(
+                        "inline-block size-1.5 shrink-0 rounded-full",
+                        c.active ? "bg-emerald-500" : "bg-muted-foreground/50"
+                      )}
+                    />
+                    <span className="truncate">
+                      {c.active ? "Активна" : "Вимкнена"} ·{" "}
+                      {PLATFORM_BY_ID[c.platform]?.label} · камп. №{481200 + c._i * 6}
+                    </span>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        </TableCell>
+        {cols.map((col) => {
+          const unknown =
+            !c._breakdown && CRM_KEYS.has(col.key) && crmUnresolved(c.name, entity)
+          return (
+            <TableCell
+              key={col.key}
+              className={cn(
+                "overflow-hidden border-b px-3 text-left tabular-nums",
+                col.emphasize && "bg-primary/[0.045] font-medium"
+              )}
+            >
+              {unknown ? <UnknownCell /> : <ValueCell row={c} col={col} />}
+            </TableCell>
+          )
+        })}
+      </TableRow>
+    )
+  }
+
+  // ---- a product "shelf" header: aggregate metrics + expand/collapse ----
+  // 10 arrangements of the same shelf, chosen from the floating design dock
+  function renderGroupRow(e: Extract<DisplayEntry, { kind: "group" }>) {
+    const isExp = expanded.has(e.id)
+    const childIdx = e.rows.map((r) => r._i)
+    const allChildSel = childIdx.every((i) => sel.has(i))
+    const someChildSel = childIdx.some((i) => sel.has(i))
+    const count =
+      e.rows.length + " " + plural(e.rows.length, "кампанія", "кампанії", "кампаній")
+
+    // base frame: box icon (left) · #ID chip + product name · round counter (right)
+    const idChip = (
+      <Badge
+        variant="secondary"
+        className="shrink-0 gap-1 font-mono text-[10px] tracking-tight"
+      >
+        <IconTag className="size-3" />
+        {e.id}
+      </Badge>
+    )
+    const iconBox = (
+      <span className="grid size-6 shrink-0 place-items-center rounded-md bg-primary/12 text-primary">
+        <IconPackage className="size-3.5" />
+      </span>
+    )
+    const countBadge = (
+      <span
+        className="ml-auto grid size-6 shrink-0 place-items-center rounded-full bg-primary/12 text-[11px] font-bold text-primary tabular-nums"
+        title={count}
+      >
+        {e.rows.length}
+      </span>
+    )
+
+    return (
+      <TableRow className={cn("group/row border-0", GROUP_BG)}>
+        <TableCell
+          className={cn("sticky left-0 z-20 border-b px-0 text-center", GROUP_FROZEN)}
+          style={{ width: W_SELECT, minWidth: W_SELECT }}
+        >
+          <div className="flex justify-center">
+            <Checkbox
+              checked={allChildSel}
+              indeterminate={someChildSel && !allChildSel}
+              onCheckedChange={() => setGroupSel(childIdx, !allChildSel)}
+              aria-label={"Обрати всі кампанії товару " + e.product}
+            />
+          </div>
+        </TableCell>
+        {showToggleCol && (
+          <TableCell
+            className={cn("sticky z-20 border-b px-0 text-center", GROUP_FROZEN)}
+            style={{ width: W_TOGGLE, minWidth: W_TOGGLE, left: W_SELECT }}
+          >
+            <span
+              className="inline-flex items-center rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground tabular-nums"
+              title={e.activeCount + " з " + e.rows.length + " активні"}
+            >
+              {e.activeCount}/{e.rows.length}
+            </span>
+          </TableCell>
+        )}
+        <TableCell
+          className={cn(
+            "sticky z-20 overflow-hidden border-b py-2 pl-2",
+            FROZEN_EDGE,
+            GROUP_FROZEN
+          )}
+          style={{
+            width: colWidths.name,
+            minWidth: colWidths.name,
+            maxWidth: colWidths.name,
+            left: nameLeft,
+          }}
+        >
+          <div className="flex w-full min-w-0 items-center gap-2">
+            {/* chevron + icon toggle expand/collapse */}
+            <button
+              onClick={() => toggleExpand(e.id)}
+              className="flex shrink-0 items-center gap-2"
+              title={isExp ? "Згорнути товар" : "Розгорнути товар"}
+            >
+              <IconChevronRight
+                className={cn(
+                  "size-4 shrink-0 text-muted-foreground transition-transform",
+                  isExp && "rotate-90"
+                )}
+              />
+              {iconBox}
+            </button>
+            <span className="flex min-w-0 flex-col gap-0.5">
+              <span className="flex min-w-0 items-center gap-1.5">
+                {idChip}
+                {isLeaf ? (
+                  <span className="min-w-0 truncate font-semibold">{e.product}</span>
+                ) : (
+                  <button
+                    onClick={() => drillProduct(e)}
+                    title={
+                      "Відкрити " +
+                      (entity === "Кампанії" ? "групи оголошень" : "оголошення")
+                    }
+                    className="flex min-w-0 items-center gap-1 font-semibold text-primary hover:underline"
+                  >
+                    <span className="min-w-0 truncate">{e.product}</span>
+                    <IconChevronDown className="size-3.5 shrink-0 -rotate-90 opacity-55" />
+                  </button>
+                )}
+              </span>
+              <span className="text-[11px] text-muted-foreground">
+                {e.activeCount} активних
+              </span>
+            </span>
+            {countBadge}
+          </div>
+        </TableCell>
+        {cols.map((col) => (
+          <TableCell
+            key={col.key}
+            className={cn(
+              "overflow-hidden border-b px-3 text-left font-semibold tabular-nums",
+              col.emphasize && "bg-primary/[0.06]"
+            )}
+          >
+            <ValueCell row={e.agg} col={col} />
+          </TableCell>
+        ))}
+      </TableRow>
+    )
+  }
+
+  // ---- section header row ("По товарам" / "По кампаніям") ----
+  // the label lives in the frozen name column so it stays visible while scrolling
+  function renderDivider(key: string, Icon: TablerIcon, label: string, n: number) {
+    return (
+      <TableRow key={key} className="hover:bg-transparent">
+        <TableCell
+          className={cn("sticky left-0 z-20 border-y", FOOTER_BG)}
+          style={{ width: W_SELECT, minWidth: W_SELECT }}
+        />
+        {showToggleCol && (
+          <TableCell
+            className={cn("sticky z-20 border-y", FOOTER_BG)}
+            style={{ width: W_TOGGLE, minWidth: W_TOGGLE, left: W_SELECT }}
+          />
+        )}
+        <TableCell
+          className={cn("sticky z-20 overflow-hidden border-y py-1.5 pl-3", FROZEN_EDGE, FOOTER_BG)}
+          style={{
+            width: colWidths.name,
+            minWidth: colWidths.name,
+            maxWidth: colWidths.name,
+            left: nameLeft,
+          }}
+        >
+          <span className="flex items-center gap-1.5 text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
+            <Icon className="size-3.5 shrink-0" />
+            {label}
+            <Badge variant="secondary" className="text-[10px] tabular-nums">
+              {n}
+            </Badge>
+          </span>
+        </TableCell>
+        {cols.map((col) => (
+          <TableCell key={col.key} className={cn("border-y", FOOTER_BG)} />
+        ))}
+      </TableRow>
+    )
+  }
+
+  // ---- skeleton row (shown while the breakdown / entity is switching) ----
+  function renderSkeletonRow(i: number) {
+    return (
+      <TableRow key={"sk" + i} className="hover:bg-transparent">
+        <TableCell
+          className={cn("sticky left-0 z-20 border-b", FROZEN_BASE)}
+          style={{ width: W_SELECT, minWidth: W_SELECT }}
+        >
+          <div className="flex justify-center">
+            <Skeleton className="size-[18px] rounded-[5px]" />
+          </div>
+        </TableCell>
+        {showToggleCol && (
+          <TableCell
+            className={cn("sticky z-20 border-b", FROZEN_BASE)}
+            style={{ width: W_TOGGLE, minWidth: W_TOGGLE, left: W_SELECT }}
+          >
+            <div className="flex justify-center">
+              <Skeleton className="h-[18px] w-8 rounded-full" />
+            </div>
+          </TableCell>
+        )}
+        <TableCell
+          className={cn("sticky z-20 overflow-hidden border-b py-2 pl-3", FROZEN_EDGE, FROZEN_BASE)}
+          style={{
+            width: colWidths.name,
+            minWidth: colWidths.name,
+            maxWidth: colWidths.name,
+            left: nameLeft,
+          }}
+        >
+          <div className="flex items-center gap-2">
+            <Skeleton className="size-6 shrink-0 rounded-md" />
+            <div className="flex flex-col gap-1.5">
+              <Skeleton className="h-3.5 w-40" style={{ width: 120 + ((i * 37) % 90) }} />
+              <Skeleton className="h-2.5 w-24" />
+            </div>
+          </div>
+        </TableCell>
+        {cols.map((col) => (
+          <TableCell key={col.key} className="border-b px-3">
+            <Skeleton className="h-4" style={{ width: 32 + ((i * 19 + col.key.length * 7) % 28) }} />
+          </TableCell>
+        ))}
+      </TableRow>
+    )
+  }
+
+  // full-page skeleton on the very first load
+  if (firstLoad) return <CampaignsSkeleton cols={cols.length} />
 
   return (
-    <div className="flex w-full min-w-0 flex-col gap-4 p-4 md:p-6">
-      <h1 className="text-xl font-bold tracking-tight">Кампанії</h1>
+    <div className="flex h-[calc(100svh-58px)] w-full min-w-0 flex-col gap-4 overflow-hidden p-4 md:p-6">
+      {/* flat order-sync health strip — stands in for the page title */}
+      <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1.5 rounded-xl bg-card px-3.5 py-2.5 text-[13px] shadow-xs">
+        <span className="grid size-6 shrink-0 place-items-center rounded-md bg-amber-500/12 text-amber-600 dark:text-amber-400">
+          <IconPlugConnectedX className="size-4" />
+        </span>
+        <span>
+          <b className="font-semibold tabular-nums">{unsyncedPct}%</b> замовлень
+          не синхронізовано з товарами
+        </span>
+        <span
+          className="h-1.5 w-20 shrink-0 overflow-hidden rounded-full bg-muted"
+          title={unsyncedPct + "% не синхронізовано"}
+        >
+          <span
+            className="block h-full rounded-full bg-amber-500"
+            style={{ width: unsyncedPct + "%" }}
+          />
+        </span>
+        <button
+          type="button"
+          className="ml-auto inline-flex shrink-0 items-center gap-1 font-medium text-primary hover:underline"
+        >
+          Дізнатися чому
+          <IconArrowUpRight className="size-3.5" />
+        </button>
+      </div>
 
-      <Card className="gap-0 overflow-hidden py-0">
+      <Card className="flex min-h-0 flex-1 flex-col gap-0 overflow-hidden py-0">
         {/* data-source hierarchy: platform › ad account › business account */}
         <div className="flex flex-wrap items-center gap-x-1.5 gap-y-2 border-b p-3.5">
           {/* level 1 — platform */}
@@ -767,19 +1404,6 @@ export function CampaignsPage() {
           </Button>
         </div>
 
-        {/* search */}
-        <div className="border-b p-3.5">
-          <div className="relative">
-            <IconSearch className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              className="pl-8.5"
-              placeholder="Пошук за назвою"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-            />
-          </div>
-        </div>
-
         {/* entity subtabs + date range (same row, date on the right) */}
         <div className="flex items-center justify-between gap-2 border-b px-3.5 pt-2.5">
           <div className="flex items-center gap-1">
@@ -874,10 +1498,47 @@ export function CampaignsPage() {
 
         {/* action toolbar */}
         <div className="flex flex-wrap items-center gap-2.5 border-b p-3.5">
-          {selCount > 0 ? (
+          {/* Розбивка — primary mode selector, where the status tabs used to be */}
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={
+                <Button variant="outline" size="sm">
+                  <IconArrowsSplit2 />
+                  <span className="text-muted-foreground">Розбивка:</span>
+                  <span className="font-semibold">{breakdown}</span>
+                  <IconChevronDown className="text-muted-foreground" />
+                </Button>
+              }
+            />
+            <DropdownMenuContent align="start">
+              <DropdownMenuLabel className="uppercase tracking-wide">Розбивка</DropdownMenuLabel>
+              <DropdownMenuRadioGroup value={breakdown} onValueChange={switchBreakdown}>
+                {BREAKDOWNS.map((b) => (
+                  <DropdownMenuRadioItem key={b} value={b} closeOnClick>
+                    {b}
+                  </DropdownMenuRadioItem>
+                ))}
+              </DropdownMenuRadioGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          {/* expand / collapse all product groups */}
+          {grouped && groupIds.length > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={toggleAllExpand}
+              title={allExpanded ? "Згорнути всі товари" : "Розгорнути всі товари"}
+            >
+              {allExpanded ? <IconChevronsUp /> : <IconChevronsDown />}
+              {allExpanded ? "Згорнути все" : "Розгорнути все"}
+            </Button>
+          )}
+
+          {selCount > 0 && (
             <>
-              <span className="text-[13px] font-bold text-primary">Обрано: {selCount}</span>
               <Separator orientation="vertical" className="h-6!" />
+              <span className="text-[13px] font-bold text-primary">Обрано: {selCount}</span>
               {entity === "Кампанії" && (
                 <Button variant="outline" size="sm" onClick={() => drillInto("Групи оголошень")}>
                   <IconLayoutGrid />
@@ -895,26 +1556,18 @@ export function CampaignsPage() {
                 Зняти
               </Button>
             </>
-          ) : (
-            <div className="inline-flex h-8 items-center gap-0.5 rounded-md border bg-muted/40 p-0.5 text-xs">
-              {(["all", "on", "off"] as const).map((s) => (
-                <button
-                  key={s}
-                  onClick={() => setStatusFilter(s)}
-                  className={cn(
-                    "rounded-[7px] px-3 py-1 font-medium transition-colors",
-                    statusFilter === s
-                      ? "bg-card text-foreground shadow-sm"
-                      : "text-muted-foreground hover:text-foreground"
-                  )}
-                >
-                  {STATUS_LABELS[s]}
-                </button>
-              ))}
-            </div>
           )}
 
-          <div className="ml-auto" />
+          {/* search — fills the space between the left actions and the columns menu */}
+          <div className="relative ml-auto min-w-40 flex-1">
+            <IconSearch className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              className="h-8 pl-8.5"
+              placeholder="Пошук за назвою"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+          </div>
 
           {/* columns dropdown */}
           <DropdownMenu>
@@ -969,38 +1622,35 @@ export function CampaignsPage() {
             </DropdownMenuContent>
           </DropdownMenu>
 
-          {/* breakdown dropdown */}
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              render={
-                <Button variant="outline" size="sm">
-                  <IconArrowsSplit2 />
-                  Розбивка
-                  <IconChevronDown className="text-muted-foreground" />
-                </Button>
-              }
-            />
-            <DropdownMenuContent align="end">
-              <DropdownMenuRadioGroup value={breakdown} onValueChange={switchBreakdown}>
-                {BREAKDOWNS.map((b) => (
-                  <DropdownMenuRadioItem key={b} value={b} closeOnClick>
-                    {b}
-                  </DropdownMenuRadioItem>
-                ))}
-              </DropdownMenuRadioGroup>
-            </DropdownMenuContent>
-          </DropdownMenu>
-
           <Button variant="ghost" size="icon-sm" aria-label="Експорт">
             <IconDownload />
           </Button>
         </div>
 
+        {/* heads-up: campaigns that can't be grouped because their name has no
+            product id up front */}
+        {grouped && entity === "Кампанії" && orphanCount > 0 && (
+          <div className="flex items-start gap-2 border-b bg-amber-500/[0.07] px-3.5 py-2 text-xs text-amber-700 dark:bg-amber-400/[0.07] dark:text-amber-400">
+            <IconAlertTriangle className="mt-0.5 size-4 shrink-0" />
+            <span className="min-w-0">
+              <b className="font-semibold">{orphanCount}</b>{" "}
+              {plural(orphanCount, "кампанія", "кампанії", "кампаній")} без ID у
+              назві — розбивка по товару для них недоступна.{" "}
+              <button
+                type="button"
+                className="font-medium whitespace-nowrap underline underline-offset-2 hover:no-underline"
+              >
+                Читати детальніше
+              </button>
+            </span>
+          </div>
+        )}
+
         {/* table — the only element that scrolls; header row, totals row and the
             left "identity" columns stay frozen just like in Ads Manager */}
         <Table
           className="w-auto table-fixed border-separate border-spacing-0 text-[13px]"
-          containerClassName="table-scroll max-h-[calc(100svh-25rem)] overflow-auto overscroll-none"
+          containerClassName="table-scroll min-h-0 flex-1 overflow-auto overscroll-none"
         >
           <TableHeader>
             <TableRow className="hover:bg-transparent">
@@ -1044,7 +1694,9 @@ export function CampaignsPage() {
                 onClick={() => toggleSort("name")}
               >
                 <span className="flex items-center gap-1 pr-2 select-none">
-                  <span className="truncate">Кампанія / товар</span>
+                  <span className="truncate">
+                    {grouped ? "Товар / Кампанія" : "Кампанія"}
+                  </span>
                   <SortIndicator state={sort.key === "name" ? sort.dir : null} />
                 </span>
                 <ResizeHandle onStart={(e) => startResize("name", e)} />
@@ -1071,119 +1723,53 @@ export function CampaignsPage() {
           </TableHeader>
 
           <TableBody>
-            {rows.map((c) => {
-              const selected = sel.has(c._i)
-              return (
-                <TableRow
-                  key={c._i}
-                  className={cn("group/row border-0", selected ? ROW_SEL : ROW_HOVER)}
-                >
-                  <TableCell
-                    className={cn(
-                      "sticky left-0 z-20 border-b px-0 text-center",
-                      frozenBg(selected)
-                    )}
-                    style={{ width: W_SELECT, minWidth: W_SELECT }}
-                  >
-                    <div className="flex justify-center">
-                      <Checkbox
-                        checked={selected}
-                        onCheckedChange={() => toggleSel(c._i)}
-                        aria-label="Обрати рядок"
-                      />
-                    </div>
-                  </TableCell>
-                  {showToggleCol && (
-                    <TableCell
-                      className={cn(
-                        "sticky z-20 border-b px-0 text-center",
-                        frozenBg(selected)
-                      )}
-                      style={{ width: W_TOGGLE, minWidth: W_TOGGLE, left: W_SELECT }}
-                    >
-                      <div className="flex justify-center">
-                        <RowSwitch active={c.active} onChange={(val) => setActive(c, val)} />
-                      </div>
-                    </TableCell>
-                  )}
-                  <TableCell
-                    className={cn(
-                      "sticky z-20 overflow-hidden border-b py-2 pl-3",
-                      FROZEN_EDGE,
-                      frozenBg(selected)
-                    )}
-                    style={{
-                      width: colWidths.name,
-                      minWidth: colWidths.name,
-                      maxWidth: colWidths.name,
-                      left: nameLeft,
-                    }}
-                  >
-                    <div className="flex min-w-0 flex-col gap-0.5">
-                      <div className="flex min-w-0 items-center gap-1.5">
-                      {c._breakdown ? (
-                        <span className="flex min-w-0 items-center gap-2 font-semibold">
-                          <IconArrowsSplit2 className="size-3.5 shrink-0 text-muted-foreground" />
-                          <span className="truncate">{c._breakdown}</span>
-                        </span>
-                      ) : isLeaf ? (
-                        <span className="flex min-w-0 items-center gap-2 font-semibold">
-                          <PlatformBadge id={c.platform} />
-                          <span className="truncate">{c.name}</span>
-                        </span>
-                      ) : (
-                        <button
-                          onClick={() => drillRow(c)}
-                          title={
-                            "Відкрити " +
-                            (entity === "Кампанії" ? "групи оголошень" : "оголошення")
-                          }
-                          className="flex min-w-0 items-center gap-2 font-semibold text-primary hover:underline"
-                        >
-                          <PlatformBadge id={c.platform} />
-                          <span className="truncate">{c.name}</span>
-                          <IconChevronDown className="size-3.5 shrink-0 -rotate-90 opacity-55" />
-                        </button>
-                      )}
-                      </div>
-                      <div className="flex min-w-0 items-center gap-1.5 text-[11px] text-muted-foreground">
-                        {c._breakdown ? (
-                          <span className="flex min-w-0 items-center gap-1.5">
-                            <PlatformBadge id={c.platform} size={12} />
-                            <span className="truncate">{c.name}</span>
-                          </span>
-                        ) : (
-                          <>
-                            <span
-                              className={cn(
-                                "inline-block size-1.5 shrink-0 rounded-full",
-                                c.active ? "bg-emerald-500" : "bg-muted-foreground/50"
-                              )}
-                            />
-                            <span className="truncate">
-                              {c.active ? "Активна" : "Вимкнена"} ·{" "}
-                              {PLATFORM_BY_ID[c.platform]?.label} · ID {1042 + c._i}
-                            </span>
-                          </>
-                        )}
-                      </div>
-                    </div>
-                  </TableCell>
-                  {cols.map((col) => (
-                    <TableCell
-                      key={col.key}
-                      className={cn(
-                        "overflow-hidden border-b px-3 text-left tabular-nums",
-                        col.emphasize && "bg-primary/[0.045] font-medium"
-                      )}
-                    >
-                      <ValueCell row={c} col={col} />
-                    </TableCell>
-                  ))}
-                </TableRow>
-              )
-            })}
-            {rows.length === 0 && (
+            {switching
+              ? Array.from({ length: 8 }, (_, i) => renderSkeletonRow(i))
+              : grouped
+              ? (() => {
+                  // "По товарам" = everything tied to a product (groups + singles);
+                  // "По кампаніям" = campaigns with no product id (orphans)
+                  const productCount = entries.filter((e) => e.kind !== "orphan").length
+                  const orphanTotal = entries.length - productCount
+                  const out: React.ReactNode[] = []
+                  let productHeaderDone = false
+                  let campaignHeaderDone = false
+                  for (const e of entries) {
+                    if (!productHeaderDone && e.kind !== "orphan") {
+                      productHeaderDone = true
+                      out.push(
+                        renderDivider("hdr-product", IconPackage, "По товарам", productCount)
+                      )
+                    }
+                    if (!campaignHeaderDone && e.kind === "orphan") {
+                      campaignHeaderDone = true
+                      out.push(
+                        renderDivider(
+                          "hdr-campaign",
+                          IconSpeakerphone,
+                          "По кампаніям",
+                          orphanTotal
+                        )
+                      )
+                    }
+                    if (e.kind === "orphan") {
+                      out.push(renderRow(e.row, { warn: true }))
+                    } else if (e.kind === "single") {
+                      out.push(renderRow(e.row))
+                    } else {
+                      out.push(
+                        <Fragment key={"g:" + e.id}>
+                          {renderGroupRow(e)}
+                          {expanded.has(e.id) &&
+                            e.rows.map((r) => renderRow(r, { child: true }))}
+                        </Fragment>
+                      )
+                    }
+                  }
+                  return out
+                })()
+              : rows.map((c) => renderRow(c))}
+            {!switching && rows.length === 0 && (
               <TableRow className="hover:bg-transparent">
                 <TableCell colSpan={colSpan} className="py-16 text-center text-muted-foreground">
                   Нічого не знайдено за фільтрами
@@ -1214,7 +1800,7 @@ export function CampaignsPage() {
               >
                 <span className="truncate">
                   Разом · {rows.length}{" "}
-                  {breakdown === BREAKDOWNS[0] ? ENTITY_NOUN[entity] : "рядків"}
+                  {BREAKDOWN_VALUES[breakdown] ? "рядків" : ENTITY_NOUN[entity]}
                 </span>
               </TableCell>
               {cols.map((col) => (
@@ -1237,6 +1823,70 @@ export function CampaignsPage() {
             </TableRow>
           </TableFooter>
         </Table>
+      </Card>
+    </div>
+  )
+}
+
+// full-page skeleton for the first load — mirrors the toolbar + table layout
+function CampaignsSkeleton({ cols }: { cols: number }) {
+  const metricCols = Math.min(cols, 7)
+  return (
+    <div className="flex h-[calc(100svh-58px)] w-full min-w-0 flex-col gap-4 overflow-hidden p-4 md:p-6">
+      {/* sync strip — stands in for the page title */}
+      <div className="flex shrink-0 items-center gap-3 rounded-xl bg-card px-3.5 py-2.5 shadow-xs">
+        <Skeleton className="size-6 shrink-0 rounded-md" />
+        <Skeleton className="h-4 w-60 max-w-[45%]" />
+        <Skeleton className="ml-auto h-4 w-28" />
+      </div>
+
+      <Card className="flex min-h-0 flex-1 flex-col gap-0 overflow-hidden py-0">
+        {/* data-source bar */}
+        <div className="flex flex-wrap items-center gap-2 border-b p-3.5">
+          <Skeleton className="h-8 w-36" />
+          <Skeleton className="h-8 w-40" />
+          <Skeleton className="h-8 w-44" />
+          <Skeleton className="ml-auto h-8 w-28" />
+          <Skeleton className="size-8" />
+        </div>
+        {/* entity tabs */}
+        <div className="flex items-center gap-5 border-b px-3.5 py-3">
+          {Array.from({ length: 3 }, (_, i) => (
+            <Skeleton key={i} className="h-6 w-32" />
+          ))}
+          <Skeleton className="ml-auto h-8 w-32" />
+        </div>
+        {/* action toolbar */}
+        <div className="flex items-center gap-2.5 border-b p-3.5">
+          <Skeleton className="h-8 w-44" />
+          <Skeleton className="h-8 w-36" />
+          <Skeleton className="ml-auto h-8 flex-1" />
+          <Skeleton className="h-8 w-24" />
+          <Skeleton className="size-8" />
+        </div>
+        {/* table */}
+        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden p-3.5">
+          {Array.from({ length: 9 }, (_, i) => (
+            <div key={i} className="flex items-center gap-3">
+              <Skeleton className="size-[18px] shrink-0 rounded-[5px]" />
+              <Skeleton className="h-5 w-8 shrink-0 rounded-full" />
+              <Skeleton className="size-6 shrink-0 rounded-md" />
+              <Skeleton
+                className="h-4 shrink-0"
+                style={{ width: 130 + ((i * 41) % 110) }}
+              />
+              <div className="ml-auto flex items-center gap-5">
+                {Array.from({ length: metricCols }, (_, j) => (
+                  <Skeleton
+                    key={j}
+                    className="h-4"
+                    style={{ width: 34 + ((i * 13 + j * 17) % 26) }}
+                  />
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
       </Card>
     </div>
   )
