@@ -1435,7 +1435,7 @@ export function CampaignsPage() {
         </span>
         <span>
           <b className="font-semibold tabular-nums">{unsyncedPct}%</b> замовлень
-          не синхронізовано з товарами
+          не синхронізовано з кампаніями
         </span>
         <span
           className="h-1.5 w-20 shrink-0 overflow-hidden rounded-full bg-muted"
