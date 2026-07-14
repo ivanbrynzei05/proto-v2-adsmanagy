@@ -1,14 +1,13 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react"
 import {
-  IconAdjustmentsHorizontal,
   IconAlertTriangle,
   IconArrowsSort,
   IconArrowsSplit2,
   IconArrowUpRight,
   IconBox,
-  IconBriefcase,
   IconCalendar,
   IconChevronDown,
+  IconChevronLeft,
   IconChevronRight,
   IconChevronsDown,
   IconChevronsUp,
@@ -46,6 +45,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Switch } from "@/components/ui/switch"
@@ -68,11 +68,9 @@ import {
   COL_GROUPS,
   COLUMNS,
   CRM_METRIC_KEYS,
-  DATE_PRESETS,
   fmt,
   parseProductId,
   PLATFORMS,
-  PORTFOLIOS,
   PRESETS,
   PRODUCTS,
   totals,
@@ -181,6 +179,14 @@ const ENTITY_NOUN: Record<string, string> = {
   "Групи оголошень": "груп оголошень",
   Оголошення: "оголошень",
 }
+// Synthetic per-level identifier shown under the name: a campaign id on the
+// campaign level, an ad-group id on groups, an ad id on ads. Each level uses a
+// distinct base/length so the ids read as belonging to that level.
+function entityId(entity: string, i: number): number {
+  if (entity === "Групи оголошень") return 623400100 + i * 17
+  if (entity === "Оголошення") return 890120045000 + i * 23
+  return 481200 + i * 6 // Кампанії
+}
 const RATE_KEYS: MetricKey[] = [
   "costPerLead",
   "approveRate",
@@ -201,18 +207,12 @@ const BREAKDOWNS = [
   BREAKDOWN_PRODUCT,
   BREAKDOWN_CAMPAIGN,
   "По кабінетах",
-  "По днях",
-  "По колцентрах",
-  "По баєрах",
 ]
 
 // Values each breakdown splits a row into (Ads-Manager style). The first entry
 // ("Без розбивки") means "no breakdown" and is handled specially.
 const BREAKDOWN_VALUES: Record<string, string[]> = {
   "По кабінетах": ["Кабінет №1", "Кабінет №2", "Кабінет №3"],
-  "По днях": ["02.07", "03.07", "04.07", "05.07", "06.07", "07.07", "08.07"],
-  "По колцентрах": ["Колцентр «Альфа»", "Колцентр «Бета»"],
-  "По баєрах": ["Баєр Олег", "Баєр Ірина", "Баєр Максим"],
 }
 // Additive metrics are divided across breakdown rows; rate metrics (RATE_KEYS)
 // stay unchanged, so every derived ratio remains internally consistent.
@@ -405,6 +405,256 @@ function RefreshControl() {
   )
 }
 
+// ---- date-range picker (calendar, "від — до") ----
+type DateRange = { from: Date; to: Date }
+
+const UA_MONTHS = [
+  "Січень", "Лютий", "Березень", "Квітень", "Травень", "Червень",
+  "Липень", "Серпень", "Вересень", "Жовтень", "Листопад", "Грудень",
+]
+const UA_MONTHS_SHORT = [
+  "січ", "лют", "бер", "кві", "тра", "чер",
+  "лип", "сер", "вер", "жов", "лис", "гру",
+]
+const UA_WEEKDAYS = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Нд"]
+// earliest selectable day — the window is limited to the last 1.5 months
+const DATE_WINDOW_DAYS = 45
+
+function startOfDay(d: Date) {
+  const x = new Date(d)
+  x.setHours(0, 0, 0, 0)
+  return x
+}
+function addDays(d: Date, n: number) {
+  const x = startOfDay(d)
+  x.setDate(x.getDate() + n)
+  return x
+}
+function sameDay(a: Date, b: Date) {
+  return (
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate()
+  )
+}
+function fmtDay(d: Date, withYear = false) {
+  return (
+    `${d.getDate()} ${UA_MONTHS_SHORT[d.getMonth()]}` +
+    (withYear ? ` ${d.getFullYear()}` : "")
+  )
+}
+// Trigger / footer label: ranges that match a preset show the preset's name; a
+// lone day collapses to its date; anything else reads "від — до".
+function rangeLabel(r: DateRange, today: Date) {
+  const named: [Date, Date, string][] = [
+    [today, today, "Сьогодні"],
+    [addDays(today, -1), addDays(today, -1), "Вчора"],
+    [addDays(today, -6), today, "Останні 7 днів"],
+    [addDays(today, -29), today, "Останні 30 днів"],
+    [addDays(today, -DATE_WINDOW_DAYS), today, "Макс."],
+  ]
+  for (const [f, t, label] of named) {
+    if (sameDay(r.from, f) && sameDay(r.to, t)) return label
+  }
+  if (sameDay(r.from, r.to)) return fmtDay(r.from, true)
+  return `${fmtDay(r.from)} – ${fmtDay(r.to, true)}`
+}
+
+// A calendar popover for picking a "від — до" period. Future days are disabled,
+// and nothing older than DATE_WINDOW_DAYS back can be chosen.
+function DateRangePicker({
+  value,
+  onChange,
+}: {
+  value: DateRange
+  onChange: (r: DateRange) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const today = useMemo(() => startOfDay(new Date()), [])
+  const minDate = useMemo(() => addDays(today, -DATE_WINDOW_DAYS), [today])
+  // 1st of the month currently shown in the grid
+  const [view, setView] = useState(
+    () => new Date(value.to.getFullYear(), value.to.getMonth(), 1)
+  )
+  // the range being edited — only committed to the parent on "Застосувати"
+  const [draft, setDraft] = useState<DateRange>(value)
+  // while an anchor is set we're mid-selection (one end chosen, waiting for the
+  // second); hover previews the other end
+  const [anchor, setAnchor] = useState<Date | null>(null)
+  const [hover, setHover] = useState<Date | null>(null)
+
+  // every time it reopens, snap back to the committed range
+  function handleOpenChange(next: boolean) {
+    if (next) {
+      setView(new Date(value.to.getFullYear(), value.to.getMonth(), 1))
+      setDraft(value)
+      setAnchor(null)
+      setHover(null)
+    }
+    setOpen(next)
+  }
+
+  const monthFirst = new Date(view.getFullYear(), view.getMonth(), 1)
+  const canPrev = monthFirst > minDate
+  const canNext =
+    new Date(view.getFullYear(), view.getMonth() + 1, 1) <=
+    new Date(today.getFullYear(), today.getMonth(), 1)
+
+  // 6×7 grid, Monday-first
+  const gridDays = useMemo(() => {
+    const first = new Date(view.getFullYear(), view.getMonth(), 1)
+    const offset = (first.getDay() + 6) % 7
+    const start = addDays(first, -offset)
+    return Array.from({ length: 42 }, (_, i) => addDays(start, i))
+  }, [view])
+
+  const isDisabled = (d: Date) => d < minDate || d > today
+
+  // range to paint: the anchored start + hovered end while selecting, otherwise
+  // the current draft
+  const a = anchor ?? draft.from
+  const b = anchor ? hover ?? anchor : draft.to
+  const lo = a <= b ? a : b
+  const hi = a <= b ? b : a
+
+  function pick(d: Date) {
+    if (isDisabled(d)) return
+    if (!anchor) {
+      // first click — start a fresh selection (draft is a single day for now)
+      setAnchor(d)
+      setDraft({ from: d, to: d })
+      setHover(d)
+      return
+    }
+    // second click — complete the range; stays open until "Застосувати"
+    const from = anchor <= d ? anchor : d
+    const to = anchor <= d ? d : anchor
+    setDraft({ from, to })
+    setAnchor(null)
+    setHover(null)
+  }
+
+  // presets are quick picks — they commit and close right away, no confirm
+  function applyPreset(from: Date, to: Date) {
+    onChange({ from, to })
+    setOpen(false)
+  }
+
+  function apply() {
+    onChange(draft)
+    setOpen(false)
+  }
+
+  const presets: [string, () => void][] = [
+    ["Сьогодні", () => applyPreset(today, today)],
+    ["Вчора", () => applyPreset(addDays(today, -1), addDays(today, -1))],
+    ["Останні 7 днів", () => applyPreset(addDays(today, -6), today)],
+    ["Останні 30 днів", () => applyPreset(addDays(today, -29), today)],
+    ["Макс.", () => applyPreset(minDate, today)],
+  ]
+
+  return (
+    <Popover open={open} onOpenChange={handleOpenChange}>
+      <PopoverTrigger
+        render={
+          <Button variant="secondary" size="sm" className="mb-2 gap-1.5">
+            <IconCalendar className="size-4 text-muted-foreground" />
+            {rangeLabel(value, today)}
+            <IconChevronDown className="size-4 text-muted-foreground" />
+          </Button>
+        }
+      />
+      <PopoverContent align="end" className="w-auto p-0">
+        <div className="flex">
+          {/* quick presets */}
+          <div className="flex w-40 shrink-0 flex-col gap-0.5 border-r p-2">
+            {presets.map(([label, fn]) => (
+              <button
+                key={label}
+                onClick={fn}
+                className="rounded-md px-2 py-1.5 text-left text-[13px] hover:bg-muted"
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          {/* month calendar */}
+          <div className="p-3">
+            <div className="mb-2 flex items-center justify-between">
+              <button
+                onClick={() => setView(new Date(view.getFullYear(), view.getMonth() - 1, 1))}
+                disabled={!canPrev}
+                aria-label="Попередній місяць"
+                className="grid size-7 place-items-center rounded-md text-muted-foreground hover:bg-muted disabled:pointer-events-none disabled:opacity-30"
+              >
+                <IconChevronLeft className="size-4" />
+              </button>
+              <span className="text-[13px] font-semibold">
+                {UA_MONTHS[view.getMonth()]} {view.getFullYear()}
+              </span>
+              <button
+                onClick={() => setView(new Date(view.getFullYear(), view.getMonth() + 1, 1))}
+                disabled={!canNext}
+                aria-label="Наступний місяць"
+                className="grid size-7 place-items-center rounded-md text-muted-foreground hover:bg-muted disabled:pointer-events-none disabled:opacity-30"
+              >
+                <IconChevronRight className="size-4" />
+              </button>
+            </div>
+            <div className="grid grid-cols-[repeat(7,36px)] gap-y-1">
+              {UA_WEEKDAYS.map((w) => (
+                <span
+                  key={w}
+                  className="grid h-7 place-items-center text-[11px] font-medium text-muted-foreground"
+                >
+                  {w}
+                </span>
+              ))}
+              {gridDays.map((d) => {
+                const outside = d.getMonth() !== view.getMonth()
+                const disabled = isDisabled(d)
+                const inRange = d >= lo && d <= hi
+                const isLo = sameDay(d, lo)
+                const isHi = sameDay(d, hi)
+                const isEnd = isLo || isHi
+                return (
+                  <button
+                    key={d.getTime()}
+                    onClick={() => pick(d)}
+                    onMouseEnter={() => anchor && setHover(d)}
+                    disabled={disabled}
+                    className={cn(
+                      "grid h-8 w-9 place-items-center text-[13px] tabular-nums transition-colors",
+                      "disabled:pointer-events-none disabled:opacity-30",
+                      inRange && !isEnd && "bg-primary/15",
+                      inRange && isLo && "rounded-l-md",
+                      inRange && isHi && "rounded-r-md",
+                      isEnd
+                        ? "rounded-md bg-primary font-semibold text-primary-foreground"
+                        : !inRange && "rounded-md hover:bg-muted",
+                      outside && !inRange && "text-muted-foreground/50"
+                    )}
+                  >
+                    {d.getDate()}
+                  </button>
+                )
+              })}
+            </div>
+            <div className="mt-3 flex items-center justify-between gap-3 border-t pt-3">
+              <span className="text-[12px] font-medium tabular-nums">
+                {rangeLabel(draft, today)}
+              </span>
+              <Button size="sm" onClick={apply}>
+                Застосувати
+              </Button>
+            </div>
+          </div>
+        </div>
+      </PopoverContent>
+    </Popover>
+  )
+}
+
 type SortKey = "name" | "active" | MetricKey
 type Indexed = Row & { _i: number; _breakdown?: string }
 
@@ -479,22 +729,22 @@ export function CampaignsPage() {
   const [sel, setSel] = useState<Set<number>>(() => new Set())
   const [activeMap, setActiveMap] = useState<Record<string, boolean>>({})
   const [entity, setEntity] = useState("Кампанії")
-  // data-source hierarchy: platform → ad account → business account
+  // data-source hierarchy: platform → ad account
   const [platforms, setPlatforms] = useState<Set<PlatformId>>(
     () => new Set(PLATFORMS.map((p) => p.id))
   )
   const [adAccounts, setAdAccounts] = useState<Set<string>>(
     () => new Set(AD_ACCOUNTS.map((a) => a.id))
   )
-  const [businesses, setBusinesses] = useState<Set<string>>(
-    () => new Set(PORTFOLIOS.map((p) => p.id))
-  )
   const showToggleCol = true
   const [drill, setDrill] = useState<{ campaigns: string[]; groups: string[] }>({
     campaigns: [],
     groups: [],
   })
-  const [dateLabel, setDateLabel] = useState(DATE_PRESETS[2])
+  const [dateRange, setDateRange] = useState<DateRange>(() => {
+    const t = startOfDay(new Date())
+    return { from: addDays(t, -6), to: t } // default: останні 7 днів
+  })
   // "Розбивка" is the primary mode selector; "По товарам" groups by product id
   const [breakdown, setBreakdown] = useState(BREAKDOWN_PRODUCT)
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set())
@@ -524,13 +774,6 @@ export function CampaignsPage() {
     () => AD_ACCOUNTS.filter((a) => platforms.has(a.platform)),
     [platforms]
   )
-  // level 3 — business accounts reachable through the chosen platform(s) + account(s)
-  const scopedBusinesses = useMemo(() => {
-    const ids = new Set(
-      scopedAccounts.filter((a) => adAccounts.has(a.id)).map((a) => a.business)
-    )
-    return PORTFOLIOS.filter((b) => ids.has(b.id))
-  }, [scopedAccounts, adAccounts])
 
   function drillOk(e: string, c: Row) {
     if (e === "Групи оголошень")
@@ -546,7 +789,6 @@ export function CampaignsPage() {
     return (
       platforms.has(c.platform) &&
       adAccounts.has(c.adAccount) &&
-      businesses.has(c.portfolio) &&
       drillOk(e, c)
     )
   }
@@ -564,7 +806,6 @@ export function CampaignsPage() {
     pulse()
   }
   const ALL_ACCOUNTS = () => new Set(AD_ACCOUNTS.map((a) => a.id))
-  const ALL_BUSINESSES = () => new Set(PORTFOLIOS.map((p) => p.id))
   // narrowing a level re-selects everything below it, so the filter never
   // silently hides rows the user didn't intend to hide
   function togglePlatform(id: PlatformId) {
@@ -575,23 +816,11 @@ export function CampaignsPage() {
       return n.size === 0 ? s : n
     })
     setAdAccounts(ALL_ACCOUNTS())
-    setBusinesses(ALL_BUSINESSES())
     setSel(new Set())
     setDrill({ campaigns: [], groups: [] })
   }
   function toggleAdAccount(id: string) {
     setAdAccounts((s) => {
-      const n = new Set(s)
-      if (n.has(id)) n.delete(id)
-      else n.add(id)
-      return n
-    })
-    setBusinesses(ALL_BUSINESSES())
-    setSel(new Set())
-    setDrill({ campaigns: [], groups: [] })
-  }
-  function toggleBusiness(id: string) {
-    setBusinesses((s) => {
       const n = new Set(s)
       if (n.has(id)) n.delete(id)
       else n.add(id)
@@ -647,7 +876,7 @@ export function CampaignsPage() {
       Оголошення: ADS.filter((c) => baseFilter("Оголошення", c)).length,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [platforms, adAccounts, businesses, drill]
+    [platforms, adAccounts, drill]
   )
 
   // data-source + search filters (shared by the table and the counters)
@@ -690,7 +919,7 @@ export function CampaignsPage() {
     }
     return r
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [entity, platforms, adAccounts, businesses, drill, query, sort, activeMap, breakdown])
+  }, [entity, platforms, adAccounts, drill, query, sort, activeMap, breakdown])
 
   const foot = useMemo(() => totals(rows), [rows])
 
@@ -841,18 +1070,10 @@ export function CampaignsPage() {
   const selAccounts = scopedAccounts.filter((a) => adAccounts.has(a.id))
   const accLabel =
     selAccounts.length === scopedAccounts.length
-      ? "Усі кабінети"
+      ? "Усі акаунти"
       : selAccounts.length === 1
         ? selAccounts[0].name
-        : selAccounts.length + " кабінети"
-  // level 3 — business account (scoped to the chosen platform(s) + account(s))
-  const selBusinesses = scopedBusinesses.filter((b) => businesses.has(b.id))
-  const bizLabel =
-    selBusinesses.length === scopedBusinesses.length
-      ? "Усі бізнес-акаунти"
-      : selBusinesses.length === 1
-        ? selBusinesses[0].name
-        : selBusinesses.length + " бізнес-акаунти"
+        : selAccounts.length + " акаунти"
 
   const colSpan = cols.length + 2 + (showToggleCol ? 1 : 0)
 
@@ -957,18 +1178,9 @@ export function CampaignsPage() {
                     <span className="truncate">{c.name}</span>
                   </span>
                 ) : (
-                  <>
-                    <span
-                      className={cn(
-                        "inline-block size-1.5 shrink-0 rounded-full",
-                        c.active ? "bg-emerald-500" : "bg-muted-foreground/50"
-                      )}
-                    />
-                    <span className="truncate">
-                      {c.active ? "Активна" : "Вимкнена"} ·{" "}
-                      {PLATFORM_BY_ID[c.platform]?.label} · камп. №{481200 + c._i * 6}
-                    </span>
-                  </>
+                  <span className="truncate tabular-nums">
+                    №{entityId(entity, c._i)}
+                  </span>
                 )}
               </div>
             </div>
@@ -1244,7 +1456,7 @@ export function CampaignsPage() {
       </div>
 
       <Card className="flex min-h-0 flex-1 flex-col gap-0 overflow-hidden py-0">
-        {/* data-source hierarchy: platform › ad account › business account */}
+        {/* data-source hierarchy: platform › ad account */}
         <div className="flex flex-wrap items-center gap-x-1.5 gap-y-2 border-b p-3.5">
           {/* level 1 — platform */}
           <DropdownMenu>
@@ -1278,7 +1490,6 @@ export function CampaignsPage() {
                 onClick={() => {
                   setPlatforms(new Set(PLATFORMS.map((p) => p.id)))
                   setAdAccounts(ALL_ACCOUNTS())
-                  setBusinesses(ALL_BUSINESSES())
                   setSel(new Set())
                   setDrill({ campaigns: [], groups: [] })
                 }}
@@ -1303,11 +1514,11 @@ export function CampaignsPage() {
             />
             <DropdownMenuContent align="start" className="w-64">
               <DropdownMenuLabel className="uppercase tracking-wide">
-                Рекламний кабінет
+                Рекламні акаунти
               </DropdownMenuLabel>
               {scopedAccounts.length === 0 ? (
                 <div className="px-2 py-4 text-center text-xs text-muted-foreground">
-                  Немає кабінетів для цих платформ
+                  Немає акаунтів для цих платформ
                 </div>
               ) : (
                 scopedAccounts.map((a) => (
@@ -1331,61 +1542,6 @@ export function CampaignsPage() {
                     closeOnClick={false}
                     onClick={() => {
                       setAdAccounts(ALL_ACCOUNTS())
-                      setBusinesses(ALL_BUSINESSES())
-                      setSel(new Set())
-                      setDrill({ campaigns: [], groups: [] })
-                    }}
-                  >
-                    Обрати всі
-                  </DropdownMenuItem>
-                </>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
-
-          <IconChevronRight className="size-4 shrink-0 text-muted-foreground/50" />
-
-          {/* level 3 — business account (scoped to the chosen platform(s) + account(s)) */}
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              render={
-                <Button variant="outline" size="sm" className="gap-1.5">
-                  <IconBriefcase className="size-4 text-muted-foreground" />
-                  {bizLabel}
-                  <IconChevronDown className="size-4 text-muted-foreground" />
-                </Button>
-              }
-            />
-            <DropdownMenuContent align="start" className="w-64">
-              <DropdownMenuLabel className="uppercase tracking-wide">
-                Бізнес-акаунт
-              </DropdownMenuLabel>
-              {scopedBusinesses.length === 0 ? (
-                <div className="px-2 py-4 text-center text-xs text-muted-foreground">
-                  Немає бізнес-акаунтів для цих кабінетів
-                </div>
-              ) : (
-                scopedBusinesses.map((b) => (
-                  <DropdownMenuCheckboxItem
-                    key={b.id}
-                    checked={businesses.has(b.id)}
-                    onCheckedChange={() => toggleBusiness(b.id)}
-                    closeOnClick={false}
-                  >
-                    <span className="flex items-center gap-2">
-                      <IconBriefcase className="size-4 text-muted-foreground" />
-                      {b.name}
-                    </span>
-                  </DropdownMenuCheckboxItem>
-                ))
-              )}
-              {scopedBusinesses.length > 0 && (
-                <>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    closeOnClick={false}
-                    onClick={() => {
-                      setBusinesses(ALL_BUSINESSES())
                       setSel(new Set())
                       setDrill({ campaigns: [], groups: [] })
                     }}
@@ -1399,9 +1555,6 @@ export function CampaignsPage() {
 
           <div className="ml-auto" />
           <RefreshControl />
-          <Button variant="ghost" size="icon" aria-label="Налаштування таблиці">
-            <IconAdjustmentsHorizontal />
-          </Button>
         </div>
 
         {/* entity subtabs + date range (same row, date on the right) */}
@@ -1434,26 +1587,7 @@ export function CampaignsPage() {
               )
             })}
           </div>
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              render={
-                <Button variant="secondary" size="sm" className="mb-2 gap-1.5">
-                  <IconCalendar className="size-4 text-muted-foreground" />
-                  {dateLabel}
-                  <IconChevronDown className="size-4 text-muted-foreground" />
-                </Button>
-              }
-            />
-            <DropdownMenuContent align="end">
-              <DropdownMenuRadioGroup value={dateLabel} onValueChange={setDateLabel}>
-                {DATE_PRESETS.map((p) => (
-                  <DropdownMenuRadioItem key={p} value={p} closeOnClick>
-                    {p}
-                  </DropdownMenuRadioItem>
-                ))}
-              </DropdownMenuRadioGroup>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <DateRangePicker value={dateRange} onChange={setDateRange} />
         </div>
 
         {/* drill-down filter bar */}
@@ -1672,13 +1806,13 @@ export function CampaignsPage() {
               {showToggleCol && (
                 <TableHead
                   className={cn(
-                    "sticky top-0 z-40 cursor-pointer border-b px-0 text-center text-[11px] font-medium tracking-wide text-muted-foreground",
+                    "sticky top-0 z-40 cursor-pointer border-b px-0 text-center",
                     HEADER_BG
                   )}
                   style={{ width: W_TOGGLE, minWidth: W_TOGGLE, left: W_SELECT }}
                   onClick={() => toggleSort("active")}
                 >
-                  <span className="inline-flex items-center gap-0.5 select-none">
+                  <span className="inline-flex items-center gap-1 select-none">
                     ВКЛ
                     <SortIndicator state={sort.key === "active" ? sort.dir : null} />
                   </span>
