@@ -623,6 +623,25 @@ export function totals(rows: Row[]): Record<MetricKey, number> {
   }
 }
 
+// ---- display currency ----
+// Mock data is stored in UAH; picking another currency converts on display
+// using these fixed demo rates (₴ per one unit of the currency).
+export type CurrencyCode = "UAH" | "USD" | "EUR"
+
+export const CURRENCIES: CurrencyCode[] = ["UAH", "USD", "EUR"]
+
+export const CURRENCY_RATES: Record<CurrencyCode, number> = {
+  UAH: 1,
+  USD: SETTINGS.usdRate, // 41.5 — same rate the metric formulas use
+  EUR: 45.2,
+}
+
+export const CURRENCY_SYMBOLS: Record<CurrencyCode, string> = {
+  UAH: "₴",
+  USD: "$",
+  EUR: "€",
+}
+
 // ---- formatting helpers (narrow no-break space grouping, like the prototype) ----
 const NB = " " // narrow no-break space
 
@@ -633,9 +652,22 @@ function groupNum(n: number) {
   return (neg ? "−" : "") + s
 }
 
-export function fmt(val: number | null | undefined, unit: Column["unit"]) {
+export function fmt(
+  val: number | null | undefined,
+  unit: Column["unit"],
+  currency: CurrencyCode = "UAH"
+) {
   if (val === null || val === undefined) return "-"
-  if (unit === "₴") return groupNum(val) + NB + "₴"
+  if (unit === "₴") {
+    if (currency === "UAH") return groupNum(val) + NB + "₴"
+    const converted = val / CURRENCY_RATES[currency]
+    // converted amounts are small (₴ → $/€), so keep two decimals
+    return (
+      converted.toLocaleString("uk", { maximumFractionDigits: 2 }) +
+      NB +
+      CURRENCY_SYMBOLS[currency]
+    )
+  }
   if (unit === "%")
     return val.toLocaleString("uk", { maximumFractionDigits: 2 }) + "%"
   if (!Number.isInteger(val))

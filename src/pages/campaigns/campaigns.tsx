@@ -1,4 +1,3 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from "react"
 import {
   IconAlertTriangle,
   IconArrowsSort,
@@ -13,6 +12,7 @@ import {
   IconChevronsUp,
   IconChevronUp,
   IconClock,
+  IconCoin,
   IconColumns,
   IconDownload,
   IconHelpCircle,
@@ -28,6 +28,7 @@ import {
   IconX,
   type Icon as TablerIcon,
 } from "@tabler/icons-react"
+import { Fragment, useEffect, useMemo, useRef, useState } from "react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -45,7 +46,11 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover"
 import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Switch } from "@/components/ui/switch"
@@ -58,7 +63,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
 import {
   AD_ACCOUNTS,
@@ -68,6 +77,8 @@ import {
   COL_GROUPS,
   COLUMNS,
   CRM_METRIC_KEYS,
+  CURRENCIES,
+  CURRENCY_SYMBOLS,
   fmt,
   parseProductId,
   PLATFORMS,
@@ -75,6 +86,7 @@ import {
   PRODUCTS,
   totals,
   type Column,
+  type CurrencyCode,
   type MetricKey,
   type PlatformId,
   type Row,
@@ -95,17 +107,38 @@ function PlatformBadge({ id, size = 15 }: { id: PlatformId; size?: number }) {
     ),
     google: (
       <svg viewBox="0 0 24 24" width={size} height={size} aria-hidden="true">
-        <path fill="#4285F4" d="M23.52 12.273c0-.851-.076-1.67-.218-2.455H12v4.642h6.458a5.52 5.52 0 0 1-2.394 3.622v3.011h3.878c2.269-2.09 3.578-5.165 3.578-8.82z" />
-        <path fill="#34A853" d="M12 24c3.24 0 5.956-1.075 7.942-2.907l-3.878-3.01c-1.075.72-2.45 1.145-4.064 1.145-3.125 0-5.77-2.11-6.714-4.948H1.276v3.11A11.997 11.997 0 0 0 12 24z" />
-        <path fill="#FBBC05" d="M5.286 14.28A7.213 7.213 0 0 1 4.91 12c0-.79.137-1.558.376-2.28V6.61H1.276A11.997 11.997 0 0 0 0 12c0 1.937.464 3.769 1.276 5.39l4.01-3.11z" />
-        <path fill="#EA4335" d="M12 4.773c1.762 0 3.343.605 4.587 1.794l3.44-3.44C17.952 1.19 15.235 0 12 0A11.997 11.997 0 0 0 1.276 6.61l4.01 3.11C6.23 6.882 8.875 4.773 12 4.773z" />
+        <path
+          fill="#4285F4"
+          d="M23.52 12.273c0-.851-.076-1.67-.218-2.455H12v4.642h6.458a5.52 5.52 0 0 1-2.394 3.622v3.011h3.878c2.269-2.09 3.578-5.165 3.578-8.82z"
+        />
+        <path
+          fill="#34A853"
+          d="M12 24c3.24 0 5.956-1.075 7.942-2.907l-3.878-3.01c-1.075.72-2.45 1.145-4.064 1.145-3.125 0-5.77-2.11-6.714-4.948H1.276v3.11A11.997 11.997 0 0 0 12 24z"
+        />
+        <path
+          fill="#FBBC05"
+          d="M5.286 14.28A7.213 7.213 0 0 1 4.91 12c0-.79.137-1.558.376-2.28V6.61H1.276A11.997 11.997 0 0 0 0 12c0 1.937.464 3.769 1.276 5.39l4.01-3.11z"
+        />
+        <path
+          fill="#EA4335"
+          d="M12 4.773c1.762 0 3.343.605 4.587 1.794l3.44-3.44C17.952 1.19 15.235 0 12 0A11.997 11.997 0 0 0 1.276 6.61l4.01 3.11C6.23 6.882 8.875 4.773 12 4.773z"
+        />
       </svg>
     ),
     tiktok: (
       <svg viewBox="0 0 24 24" width={size} height={size} aria-hidden="true">
-        <path className="fill-foreground" d="M19.589 6.686a4.793 4.793 0 0 1-3.77-4.245V2h-3.445v13.672a2.896 2.896 0 0 1-5.201 1.743l-.002-.001.002.001a2.895 2.895 0 0 1 3.183-4.51v-3.5a6.329 6.329 0 0 0-5.394 10.692 6.33 6.33 0 0 0 10.857-4.424V8.687a8.182 8.182 0 0 0 4.773 1.526V6.79a4.831 4.831 0 0 1-1.003-.104z" />
-        <path fill="#25F4EE" d="M5.633 16.42a2.895 2.895 0 0 1 3.183-4.51V8.39a6.33 6.33 0 0 0-5.394 10.692 6.33 6.33 0 0 1 2.211-2.662z" />
-        <path fill="#FE2C55" d="M20.592 6.79V6.686a4.793 4.793 0 0 1-2.767-.869 4.793 4.793 0 0 0 2.767.973z" />
+        <path
+          className="fill-foreground"
+          d="M19.589 6.686a4.793 4.793 0 0 1-3.77-4.245V2h-3.445v13.672a2.896 2.896 0 0 1-5.201 1.743l-.002-.001.002.001a2.895 2.895 0 0 1 3.183-4.51v-3.5a6.329 6.329 0 0 0-5.394 10.692 6.33 6.33 0 0 0 10.857-4.424V8.687a8.182 8.182 0 0 0 4.773 1.526V6.79a4.831 4.831 0 0 1-1.003-.104z"
+        />
+        <path
+          fill="#25F4EE"
+          d="M5.633 16.42a2.895 2.895 0 0 1 3.183-4.51V8.39a6.33 6.33 0 0 0-5.394 10.692 6.33 6.33 0 0 1 2.211-2.662z"
+        />
+        <path
+          fill="#FE2C55"
+          d="M20.592 6.79V6.686a4.793 4.793 0 0 1-2.767-.869 4.793 4.793 0 0 0 2.767.973z"
+        />
       </svg>
     ),
   }
@@ -122,7 +155,15 @@ function PlatformBadge({ id, size = 15 }: { id: PlatformId; size?: number }) {
 
 // ---- single metric cell: pill / mini-bar / plain number ----
 // accepts a full Row or an aggregated { metric: value } map (product-group total)
-function ValueCell({ row, col }: { row: Record<MetricKey, number>; col: Column }) {
+function ValueCell({
+  row,
+  col,
+  cur = "UAH",
+}: {
+  row: Record<MetricKey, number>
+  col: Column
+  cur?: CurrencyCode
+}) {
   const v = row[col.key]
 
   if (
@@ -135,13 +176,13 @@ function ValueCell({ row, col }: { row: Record<MetricKey, number>; col: Column }
       <Badge
         variant="outline"
         className={cn(
-          "tabular-nums border-transparent",
+          "border-transparent tabular-nums",
           v >= 0
             ? "bg-emerald-500/12 text-emerald-600 dark:text-emerald-400"
             : "bg-destructive/10 text-destructive"
         )}
       >
-        {fmt(v, col.unit)}
+        {fmt(v, col.unit, cur)}
       </Badge>
     )
   }
@@ -149,7 +190,7 @@ function ValueCell({ row, col }: { row: Record<MetricKey, number>; col: Column }
   if (col.key === "approveRate" || col.key === "buyoutRate") {
     return (
       <span className="inline-flex items-center gap-2">
-        <span className="w-11 tabular-nums">{fmt(v, col.unit)}</span>
+        <span className="w-11 tabular-nums">{fmt(v, col.unit, cur)}</span>
         <span className="h-1.5 w-11 overflow-hidden rounded-full bg-muted">
           <span
             className="block h-full rounded-full bg-primary"
@@ -160,7 +201,7 @@ function ValueCell({ row, col }: { row: Record<MetricKey, number>; col: Column }
     )
   }
 
-  return <span className="tabular-nums">{fmt(v, col.unit)}</span>
+  return <span className="tabular-nums">{fmt(v, col.unit, cur)}</span>
 }
 
 // ---- entity tabs (campaign → ad-group → ad drill levels) ----
@@ -203,11 +244,7 @@ const RATE_KEYS: MetricKey[] = [
 // flat list; the rest fan each row out into sub-rows (see BREAKDOWN_VALUES).
 const BREAKDOWN_PRODUCT = "По товарам"
 const BREAKDOWN_CAMPAIGN = "По кампаніям"
-const BREAKDOWNS = [
-  BREAKDOWN_PRODUCT,
-  BREAKDOWN_CAMPAIGN,
-  "По кабінетах",
-]
+const BREAKDOWNS = [BREAKDOWN_PRODUCT, BREAKDOWN_CAMPAIGN, "По кабінетах"]
 
 // Values each breakdown splits a row into (Ads-Manager style). The first entry
 // ("Без розбивки") means "no breakdown" and is handled specially.
@@ -263,7 +300,6 @@ const CHILD_BG =
 const CHILD_FROZEN =
   "bg-[color-mix(in_oklab,var(--muted)_28%,var(--card))] group-hover/row:bg-[color-mix(in_oklab,var(--muted)_45%,var(--card))]"
 
-
 // Ukrainian plural picker (1 кампанія / 2 кампанії / 5 кампаній)
 function plural(n: number, one: string, few: string, many: string) {
   const m10 = n % 10
@@ -286,8 +322,8 @@ function NoProductWarning() {
         }
       />
       <TooltipContent className="max-w-[260px] leading-relaxed">
-        Назва не починається з ID товару — розбивка по товару недоступна. Додайте
-        ID на початок назви, напр. «1042 - …».
+        Назва не починається з ID товару — розбивка по товару недоступна.
+        Додайте ID на початок назви, напр. «1042 - …».
       </TooltipContent>
     </Tooltip>
   )
@@ -385,11 +421,15 @@ function RefreshControl() {
       <span
         className={cn(
           "flex items-center gap-1 text-xs whitespace-nowrap",
-          cooling ? "text-amber-600 dark:text-amber-500" : "text-muted-foreground"
+          cooling
+            ? "text-amber-600 dark:text-amber-500"
+            : "text-muted-foreground"
         )}
       >
         <IconClock className="size-3.5 shrink-0" />
-        {cooling ? `Наступна спроба через ${remaining}с` : relativeTime(lastUpdated, now)}
+        {cooling
+          ? `Наступна спроба через ${remaining}с`
+          : relativeTime(lastUpdated, now)}
       </span>
       <Button
         variant="outline"
@@ -409,12 +449,32 @@ function RefreshControl() {
 type DateRange = { from: Date; to: Date }
 
 const UA_MONTHS = [
-  "Січень", "Лютий", "Березень", "Квітень", "Травень", "Червень",
-  "Липень", "Серпень", "Вересень", "Жовтень", "Листопад", "Грудень",
+  "Січень",
+  "Лютий",
+  "Березень",
+  "Квітень",
+  "Травень",
+  "Червень",
+  "Липень",
+  "Серпень",
+  "Вересень",
+  "Жовтень",
+  "Листопад",
+  "Грудень",
 ]
 const UA_MONTHS_SHORT = [
-  "січ", "лют", "бер", "кві", "тра", "чер",
-  "лип", "сер", "вер", "жов", "лис", "гру",
+  "січ",
+  "лют",
+  "бер",
+  "кві",
+  "тра",
+  "чер",
+  "лип",
+  "сер",
+  "вер",
+  "жов",
+  "лис",
+  "гру",
 ]
 const UA_WEEKDAYS = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Нд"]
 // earliest selectable day — the window is limited to the last 1.5 months
@@ -513,7 +573,7 @@ function DateRangePicker({
   // range to paint: the anchored start + hovered end while selecting, otherwise
   // the current draft
   const a = anchor ?? draft.from
-  const b = anchor ? hover ?? anchor : draft.to
+  const b = anchor ? (hover ?? anchor) : draft.to
   const lo = a <= b ? a : b
   const hi = a <= b ? b : a
 
@@ -582,7 +642,9 @@ function DateRangePicker({
           <div className="p-3">
             <div className="mb-2 flex items-center justify-between">
               <button
-                onClick={() => setView(new Date(view.getFullYear(), view.getMonth() - 1, 1))}
+                onClick={() =>
+                  setView(new Date(view.getFullYear(), view.getMonth() - 1, 1))
+                }
                 disabled={!canPrev}
                 aria-label="Попередній місяць"
                 className="grid size-7 place-items-center rounded-md text-muted-foreground hover:bg-muted disabled:pointer-events-none disabled:opacity-30"
@@ -593,7 +655,9 @@ function DateRangePicker({
                 {UA_MONTHS[view.getMonth()]} {view.getFullYear()}
               </span>
               <button
-                onClick={() => setView(new Date(view.getFullYear(), view.getMonth() + 1, 1))}
+                onClick={() =>
+                  setView(new Date(view.getFullYear(), view.getMonth() + 1, 1))
+                }
                 disabled={!canNext}
                 aria-label="Наступний місяць"
                 className="grid size-7 place-items-center rounded-md text-muted-foreground hover:bg-muted disabled:pointer-events-none disabled:opacity-30"
@@ -677,7 +741,10 @@ export function CampaignsPage() {
   const [visible, setVisible] = useState<Record<string, boolean>>(() =>
     Object.fromEntries(allCols.map((c) => [c.key, true]))
   )
-  const [sort, setSort] = useState<{ key: SortKey | null; dir: "asc" | "desc" }>({
+  const [sort, setSort] = useState<{
+    key: SortKey | null
+    dir: "asc" | "desc"
+  }>({
     key: "spend",
     dir: "desc",
   })
@@ -687,13 +754,18 @@ export function CampaignsPage() {
     for (const c of COLUMNS) defaults[c.key] = defaultColWidth(c.label)
     try {
       const saved = localStorage.getItem(COL_WIDTHS_KEY)
-      if (saved) return { ...defaults, ...(JSON.parse(saved) as Record<string, number>) }
+      if (saved)
+        return { ...defaults, ...(JSON.parse(saved) as Record<string, number>) }
     } catch {
       /* ignore */
     }
     return defaults
   })
-  const resizeRef = useRef<{ key: string; startX: number; startW: number } | null>(null)
+  const resizeRef = useRef<{
+    key: string
+    startX: number
+    startW: number
+  } | null>(null)
   useEffect(() => {
     try {
       localStorage.setItem(COL_WIDTHS_KEY, JSON.stringify(colWidths))
@@ -705,12 +777,18 @@ export function CampaignsPage() {
   function startResize(key: string, e: React.MouseEvent) {
     e.preventDefault()
     e.stopPropagation()
-    resizeRef.current = { key, startX: e.clientX, startW: colWidths[key] ?? 120 }
+    resizeRef.current = {
+      key,
+      startX: e.clientX,
+      startW: colWidths[key] ?? 120,
+    }
     const move = (ev: MouseEvent) => {
       const r = resizeRef.current
       if (!r) return
       const w = Math.max(72, Math.min(560, r.startW + (ev.clientX - r.startX)))
-      setColWidths((prev) => (prev[r.key] === w ? prev : { ...prev, [r.key]: w }))
+      setColWidths((prev) =>
+        prev[r.key] === w ? prev : { ...prev, [r.key]: w }
+      )
     }
     const up = () => {
       resizeRef.current = null
@@ -737,16 +815,20 @@ export function CampaignsPage() {
     () => new Set(AD_ACCOUNTS.map((a) => a.id))
   )
   const showToggleCol = true
-  const [drill, setDrill] = useState<{ campaigns: string[]; groups: string[] }>({
-    campaigns: [],
-    groups: [],
-  })
+  const [drill, setDrill] = useState<{ campaigns: string[]; groups: string[] }>(
+    {
+      campaigns: [],
+      groups: [],
+    }
+  )
   const [dateRange, setDateRange] = useState<DateRange>(() => {
     const t = startOfDay(new Date())
     return { from: addDays(t, -6), to: t } // default: останні 7 днів
   })
   // "Розбивка" is the primary mode selector; "По товарам" groups by product id
   const [breakdown, setBreakdown] = useState(BREAKDOWN_PRODUCT)
+  // display currency for money columns (mock data is stored in UAH)
+  const [currency, setCurrency] = useState<CurrencyCode>("UAH")
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set())
 
   // loading skeletons: a full-page one on first load, and a short table pulse
@@ -777,19 +859,21 @@ export function CampaignsPage() {
 
   function drillOk(e: string, c: Row) {
     if (e === "Групи оголошень")
-      return drill.campaigns.length === 0 || drill.campaigns.includes(c.campaign ?? "")
+      return (
+        drill.campaigns.length === 0 ||
+        drill.campaigns.includes(c.campaign ?? "")
+      )
     if (e === "Оголошення")
       return (
-        (drill.campaigns.length === 0 || drill.campaigns.includes(c.campaign ?? "")) &&
+        (drill.campaigns.length === 0 ||
+          drill.campaigns.includes(c.campaign ?? "")) &&
         (drill.groups.length === 0 || drill.groups.includes(c.group ?? ""))
       )
     return true
   }
   function baseFilter(e: string, c: Row) {
     return (
-      platforms.has(c.platform) &&
-      adAccounts.has(c.adAccount) &&
-      drillOk(e, c)
+      platforms.has(c.platform) && adAccounts.has(c.adAccount) && drillOk(e, c)
     )
   }
 
@@ -872,7 +956,9 @@ export function CampaignsPage() {
   const counts = useMemo(
     () => ({
       Кампанії: CAMPAIGNS.filter((c) => baseFilter("Кампанії", c)).length,
-      "Групи оголошень": AD_GROUPS.filter((c) => baseFilter("Групи оголошень", c)).length,
+      "Групи оголошень": AD_GROUPS.filter((c) =>
+        baseFilter("Групи оголошень", c)
+      ).length,
       Оголошення: ADS.filter((c) => baseFilter("Оголошення", c)).length,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -882,7 +968,8 @@ export function CampaignsPage() {
   // data-source + search filters (shared by the table and the counters)
   function passesFilters(e: string, c: Row) {
     if (!baseFilter(e, c)) return false
-    if (query.trim() && !c.name.toLowerCase().includes(query.toLowerCase())) return false
+    if (query.trim() && !c.name.toLowerCase().includes(query.toLowerCase()))
+      return false
     return true
   }
 
@@ -890,7 +977,8 @@ export function CampaignsPage() {
     let r: Indexed[] = (DATASETS[entity] || CAMPAIGNS).map((c, i) => ({
       ...c,
       _i: i,
-      active: entity + ":" + i in activeMap ? activeMap[entity + ":" + i] : c.active,
+      active:
+        entity + ":" + i in activeMap ? activeMap[entity + ":" + i] : c.active,
     }))
     r = r.filter((c) => passesFilters(entity, c))
     if (sort.key) {
@@ -911,8 +999,13 @@ export function CampaignsPage() {
       r = r.flatMap((row, ri) => {
         const w = breakdownWeights(vals.length, ri)
         return vals.map((val, vi) => {
-          const sub: Indexed = { ...row, _i: row._i * 100 + vi, _breakdown: val }
-          for (const k of ADDITIVE_KEYS) sub[k] = Math.round((row[k] as number) * w[vi])
+          const sub: Indexed = {
+            ...row,
+            _i: row._i * 100 + vi,
+            _breakdown: val,
+          }
+          for (const k of ADDITIVE_KEYS)
+            sub[k] = Math.round((row[k] as number) * w[vi])
           return sub
         })
       })
@@ -991,7 +1084,9 @@ export function CampaignsPage() {
         const av = val(a)
         const bv = val(b)
         const cmp =
-          typeof av === "string" ? av.localeCompare(bv as string) : av - (bv as number)
+          typeof av === "string"
+            ? av.localeCompare(bv as string)
+            : av - (bv as number)
         return cmp * dir
       }
       groupsTier.sort(byKey)
@@ -1009,7 +1104,8 @@ export function CampaignsPage() {
     () => entries.reduce((n, e) => n + (e.kind === "orphan" ? 1 : 0), 0),
     [entries]
   )
-  const allExpanded = groupIds.length > 0 && groupIds.every((id) => expanded.has(id))
+  const allExpanded =
+    groupIds.length > 0 && groupIds.every((id) => expanded.has(id))
 
   function toggleExpand(id: string) {
     setExpanded((s) => {
@@ -1056,7 +1152,11 @@ export function CampaignsPage() {
 
   const selCount = sel.size
   const PLATFORM_BY_ID = useMemo(
-    () => Object.fromEntries(PLATFORMS.map((p) => [p.id, p])) as Record<PlatformId, (typeof PLATFORMS)[number]>,
+    () =>
+      Object.fromEntries(PLATFORMS.map((p) => [p.id, p])) as Record<
+        PlatformId,
+        (typeof PLATFORMS)[number]
+      >,
     []
   )
   // level 1 — platform
@@ -1100,9 +1200,15 @@ export function CampaignsPage() {
     const child = !!opts.child
     const displayName = c.name
     return (
-      <TableRow key={c._i} className={cn("group/row border-0", rowBg(selected, child))}>
+      <TableRow
+        key={c._i}
+        className={cn("group/row border-0", rowBg(selected, child))}
+      >
         <TableCell
-          className={cn("sticky left-0 z-20 border-b px-0 text-center", frozenBg(selected, child))}
+          className={cn(
+            "sticky left-0 z-20 border-b px-0 text-center",
+            frozenBg(selected, child)
+          )}
           style={{ width: W_SELECT, minWidth: W_SELECT }}
         >
           <div className="flex justify-center">
@@ -1115,11 +1221,17 @@ export function CampaignsPage() {
         </TableCell>
         {showToggleCol && (
           <TableCell
-            className={cn("sticky z-20 border-b px-0 text-center", frozenBg(selected, child))}
+            className={cn(
+              "sticky z-20 border-b px-0 text-center",
+              frozenBg(selected, child)
+            )}
             style={{ width: W_TOGGLE, minWidth: W_TOGGLE, left: W_SELECT }}
           >
             <div className="flex justify-center">
-              <RowSwitch active={c.active} onChange={(val) => setActive(c, val)} />
+              <RowSwitch
+                active={c.active}
+                onChange={(val) => setActive(c, val)}
+              />
             </div>
           </TableCell>
         )}
@@ -1136,11 +1248,21 @@ export function CampaignsPage() {
             left: nameLeft,
           }}
         >
-          <div className={cn("flex min-w-0 gap-1.5", child ? "items-stretch" : "items-center")}>
+          <div
+            className={cn(
+              "flex min-w-0 gap-1.5",
+              child ? "items-stretch" : "items-center"
+            )}
+          >
             {child && (
               <span className="ml-1.5 w-3 shrink-0 self-stretch border-l border-border/60" />
             )}
-            <div className={cn("flex min-w-0 flex-col gap-0.5", child && "justify-center")}>
+            <div
+              className={cn(
+                "flex min-w-0 flex-col gap-0.5",
+                child && "justify-center"
+              )}
+            >
               <div className="flex min-w-0 items-center gap-1.5">
                 {c._breakdown ? (
                   <span className="flex min-w-0 items-center gap-2 font-semibold">
@@ -1188,7 +1310,9 @@ export function CampaignsPage() {
         </TableCell>
         {cols.map((col) => {
           const unknown =
-            !c._breakdown && CRM_KEYS.has(col.key) && crmUnresolved(c.name, entity)
+            !c._breakdown &&
+            CRM_KEYS.has(col.key) &&
+            crmUnresolved(c.name, entity)
           return (
             <TableCell
               key={col.key}
@@ -1197,7 +1321,11 @@ export function CampaignsPage() {
                 col.emphasize && "bg-primary/[0.045] font-medium"
               )}
             >
-              {unknown ? <UnknownCell /> : <ValueCell row={c} col={col} />}
+              {unknown ? (
+                <UnknownCell />
+              ) : (
+                <ValueCell row={c} col={col} cur={currency} />
+              )}
             </TableCell>
           )
         })}
@@ -1213,7 +1341,9 @@ export function CampaignsPage() {
     const allChildSel = childIdx.every((i) => sel.has(i))
     const someChildSel = childIdx.some((i) => sel.has(i))
     const count =
-      e.rows.length + " " + plural(e.rows.length, "кампанія", "кампанії", "кампаній")
+      e.rows.length +
+      " " +
+      plural(e.rows.length, "кампанія", "кампанії", "кампаній")
 
     // base frame: box icon (left) · #ID chip + product name · round counter (right)
     const idChip = (
@@ -1242,7 +1372,10 @@ export function CampaignsPage() {
     return (
       <TableRow className={cn("group/row border-0", GROUP_BG)}>
         <TableCell
-          className={cn("sticky left-0 z-20 border-b px-0 text-center", GROUP_FROZEN)}
+          className={cn(
+            "sticky left-0 z-20 border-b px-0 text-center",
+            GROUP_FROZEN
+          )}
           style={{ width: W_SELECT, minWidth: W_SELECT }}
         >
           <div className="flex justify-center">
@@ -1256,7 +1389,10 @@ export function CampaignsPage() {
         </TableCell>
         {showToggleCol && (
           <TableCell
-            className={cn("sticky z-20 border-b px-0 text-center", GROUP_FROZEN)}
+            className={cn(
+              "sticky z-20 border-b px-0 text-center",
+              GROUP_FROZEN
+            )}
             style={{ width: W_TOGGLE, minWidth: W_TOGGLE, left: W_SELECT }}
           >
             <span
@@ -1299,7 +1435,9 @@ export function CampaignsPage() {
               <span className="flex min-w-0 items-center gap-1.5">
                 {idChip}
                 {isLeaf ? (
-                  <span className="min-w-0 truncate font-semibold">{e.product}</span>
+                  <span className="min-w-0 truncate font-semibold">
+                    {e.product}
+                  </span>
                 ) : (
                   <button
                     onClick={() => drillProduct(e)}
@@ -1329,7 +1467,7 @@ export function CampaignsPage() {
               col.emphasize && "bg-primary/[0.06]"
             )}
           >
-            <ValueCell row={e.agg} col={col} />
+            <ValueCell row={e.agg} col={col} cur={currency} />
           </TableCell>
         ))}
       </TableRow>
@@ -1338,7 +1476,12 @@ export function CampaignsPage() {
 
   // ---- section header row ("По товарам" / "По кампаніям") ----
   // the label lives in the frozen name column so it stays visible while scrolling
-  function renderDivider(key: string, Icon: TablerIcon, label: string, n: number) {
+  function renderDivider(
+    key: string,
+    Icon: TablerIcon,
+    label: string,
+    n: number
+  ) {
     return (
       <TableRow key={key} className="hover:bg-transparent">
         <TableCell
@@ -1352,7 +1495,11 @@ export function CampaignsPage() {
           />
         )}
         <TableCell
-          className={cn("sticky z-20 overflow-hidden border-y py-1.5 pl-3", FROZEN_EDGE, FOOTER_BG)}
+          className={cn(
+            "sticky z-20 overflow-hidden border-y py-1.5 pl-3",
+            FROZEN_EDGE,
+            FOOTER_BG
+          )}
           style={{
             width: colWidths.name,
             minWidth: colWidths.name,
@@ -1398,7 +1545,11 @@ export function CampaignsPage() {
           </TableCell>
         )}
         <TableCell
-          className={cn("sticky z-20 overflow-hidden border-b py-2 pl-3", FROZEN_EDGE, FROZEN_BASE)}
+          className={cn(
+            "sticky z-20 overflow-hidden border-b py-2 pl-3",
+            FROZEN_EDGE,
+            FROZEN_BASE
+          )}
           style={{
             width: colWidths.name,
             minWidth: colWidths.name,
@@ -1409,14 +1560,20 @@ export function CampaignsPage() {
           <div className="flex items-center gap-2">
             <Skeleton className="size-6 shrink-0 rounded-md" />
             <div className="flex flex-col gap-1.5">
-              <Skeleton className="h-3.5 w-40" style={{ width: 120 + ((i * 37) % 90) }} />
+              <Skeleton
+                className="h-3.5 w-40"
+                style={{ width: 120 + ((i * 37) % 90) }}
+              />
               <Skeleton className="h-2.5 w-24" />
             </div>
           </div>
         </TableCell>
         {cols.map((col) => (
           <TableCell key={col.key} className="border-b px-3">
-            <Skeleton className="h-4" style={{ width: 32 + ((i * 19 + col.key.length * 7) % 28) }} />
+            <Skeleton
+              className="h-4"
+              style={{ width: 32 + ((i * 19 + col.key.length * 7) % 28) }}
+            />
           </TableCell>
         ))}
       </TableRow>
@@ -1470,7 +1627,9 @@ export function CampaignsPage() {
               }
             />
             <DropdownMenuContent align="start" className="w-56">
-              <DropdownMenuLabel className="uppercase tracking-wide">Платформа</DropdownMenuLabel>
+              <DropdownMenuLabel className="tracking-wide uppercase">
+                Платформа
+              </DropdownMenuLabel>
               {PLATFORMS.map((p) => (
                 <DropdownMenuCheckboxItem
                   key={p.id}
@@ -1513,7 +1672,7 @@ export function CampaignsPage() {
               }
             />
             <DropdownMenuContent align="start" className="w-64">
-              <DropdownMenuLabel className="uppercase tracking-wide">
+              <DropdownMenuLabel className="tracking-wide uppercase">
                 Рекламні акаунти
               </DropdownMenuLabel>
               {scopedAccounts.length === 0 ? (
@@ -1554,6 +1713,33 @@ export function CampaignsPage() {
           </DropdownMenu>
 
           <div className="ml-auto" />
+          {/* display currency for money columns */}
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={
+                <Button variant="outline" size="sm" className="gap-1.5">
+                  <IconCoin className="size-4 text-muted-foreground" />
+                  {currency} {CURRENCY_SYMBOLS[currency]}
+                  <IconChevronDown className="size-4 text-muted-foreground" />
+                </Button>
+              }
+            />
+            <DropdownMenuContent align="end">
+              <DropdownMenuLabel className="tracking-wide uppercase">
+                Валюта
+              </DropdownMenuLabel>
+              <DropdownMenuRadioGroup
+                value={currency}
+                onValueChange={(v) => setCurrency(v as CurrencyCode)}
+              >
+                {CURRENCIES.map((c) => (
+                  <DropdownMenuRadioItem key={c} value={c} closeOnClick>
+                    {c} {CURRENCY_SYMBOLS[c]}
+                  </DropdownMenuRadioItem>
+                ))}
+              </DropdownMenuRadioGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
           <RefreshControl />
         </div>
 
@@ -1578,7 +1764,9 @@ export function CampaignsPage() {
                   <span
                     className={cn(
                       "rounded-full px-1.5 py-0.5 text-[11px] font-semibold tabular-nums",
-                      active ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground"
+                      active
+                        ? "bg-primary/15 text-primary"
+                        : "bg-muted text-muted-foreground"
                     )}
                   >
                     {counts[t as keyof typeof counts]}
@@ -1593,7 +1781,9 @@ export function CampaignsPage() {
         {/* drill-down filter bar */}
         {(drill.campaigns.length > 0 || drill.groups.length > 0) && (
           <div className="flex flex-wrap items-center gap-2 border-b bg-primary/5 px-3.5 py-2.5">
-            <span className="text-xs font-bold text-muted-foreground">Фільтр за вибором:</span>
+            <span className="text-xs font-bold text-muted-foreground">
+              Фільтр за вибором:
+            </span>
             {drill.campaigns.length > 0 && (
               <Badge variant="outline" className="gap-1 bg-card py-1 pr-1">
                 <IconSpeakerphone className="size-3.5" />
@@ -1612,7 +1802,9 @@ export function CampaignsPage() {
                 <IconLayoutGrid className="size-3.5" />
                 Групи: {drill.groups.length}
                 <button
-                  onClick={() => setDrill((d) => ({ campaigns: d.campaigns, groups: [] }))}
+                  onClick={() =>
+                    setDrill((d) => ({ campaigns: d.campaigns, groups: [] }))
+                  }
                   className="ml-0.5 grid size-4 place-items-center rounded-full hover:bg-muted"
                   title="Прибрати"
                 >
@@ -1623,7 +1815,12 @@ export function CampaignsPage() {
             <span className="text-xs text-muted-foreground">
               · знайдено {rows.length} {ENTITY_NOUN[entity]}
             </span>
-            <Button variant="ghost" size="sm" className="ml-1" onClick={clearDrill}>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="ml-1"
+              onClick={clearDrill}
+            >
               <IconX />
               Скинути все
             </Button>
@@ -1645,8 +1842,13 @@ export function CampaignsPage() {
               }
             />
             <DropdownMenuContent align="start">
-              <DropdownMenuLabel className="uppercase tracking-wide">Розбивка</DropdownMenuLabel>
-              <DropdownMenuRadioGroup value={breakdown} onValueChange={switchBreakdown}>
+              <DropdownMenuLabel className="tracking-wide uppercase">
+                Розбивка
+              </DropdownMenuLabel>
+              <DropdownMenuRadioGroup
+                value={breakdown}
+                onValueChange={switchBreakdown}
+              >
                 {BREAKDOWNS.map((b) => (
                   <DropdownMenuRadioItem key={b} value={b} closeOnClick>
                     {b}
@@ -1662,7 +1864,9 @@ export function CampaignsPage() {
               variant="outline"
               size="sm"
               onClick={toggleAllExpand}
-              title={allExpanded ? "Згорнути всі товари" : "Розгорнути всі товари"}
+              title={
+                allExpanded ? "Згорнути всі товари" : "Розгорнути всі товари"
+              }
             >
               {allExpanded ? <IconChevronsUp /> : <IconChevronsDown />}
               {allExpanded ? "Згорнути все" : "Розгорнути все"}
@@ -1672,20 +1876,34 @@ export function CampaignsPage() {
           {selCount > 0 && (
             <>
               <Separator orientation="vertical" className="h-6!" />
-              <span className="text-[13px] font-bold text-primary">Обрано: {selCount}</span>
+              <span className="text-[13px] font-bold text-primary">
+                Обрано: {selCount}
+              </span>
               {entity === "Кампанії" && (
-                <Button variant="outline" size="sm" onClick={() => drillInto("Групи оголошень")}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => drillInto("Групи оголошень")}
+                >
                   <IconLayoutGrid />
                   Групи оголошень для {selCount}
                 </Button>
               )}
               {entity === "Групи оголошень" && (
-                <Button variant="outline" size="sm" onClick={() => drillInto("Оголошення")}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => drillInto("Оголошення")}
+                >
                   <IconBox />
                   Оголошення для {selCount}
                 </Button>
               )}
-              <Button variant="ghost" size="sm" onClick={() => setSel(new Set())}>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setSel(new Set())}
+              >
                 <IconX />
                 Зняти
               </Button>
@@ -1715,7 +1933,9 @@ export function CampaignsPage() {
               }
             />
             <DropdownMenuContent align="end" className="max-h-[460px] w-64">
-              <DropdownMenuLabel className="uppercase tracking-wide">Набори</DropdownMenuLabel>
+              <DropdownMenuLabel className="tracking-wide uppercase">
+                Набори
+              </DropdownMenuLabel>
               {Object.keys(PRESETS).map((p) => (
                 <DropdownMenuItem
                   key={p}
@@ -1724,7 +1944,10 @@ export function CampaignsPage() {
                     const groups = PRESETS[p]
                     setVisible(
                       Object.fromEntries(
-                        allCols.map((c) => [c.key, groups ? groups.includes(c.group) : true])
+                        allCols.map((c) => [
+                          c.key,
+                          groups ? groups.includes(c.group) : true,
+                        ])
                       )
                     )
                   }}
@@ -1736,7 +1959,7 @@ export function CampaignsPage() {
               <DropdownMenuSeparator />
               {COL_GROUPS.map((g) => (
                 <div key={g.id}>
-                  <DropdownMenuLabel className="uppercase tracking-wide">
+                  <DropdownMenuLabel className="tracking-wide uppercase">
                     {g.label}
                   </DropdownMenuLabel>
                   {allCols
@@ -1745,7 +1968,9 @@ export function CampaignsPage() {
                       <DropdownMenuCheckboxItem
                         key={c.key}
                         checked={!!visible[c.key]}
-                        onCheckedChange={() => setVisible((v) => ({ ...v, [c.key]: !v[c.key] }))}
+                        onCheckedChange={() =>
+                          setVisible((v) => ({ ...v, [c.key]: !v[c.key] }))
+                        }
                         closeOnClick={false}
                       >
                         {c.label}
@@ -1809,12 +2034,18 @@ export function CampaignsPage() {
                     "sticky top-0 z-40 cursor-pointer border-b px-0 text-center",
                     HEADER_BG
                   )}
-                  style={{ width: W_TOGGLE, minWidth: W_TOGGLE, left: W_SELECT }}
+                  style={{
+                    width: W_TOGGLE,
+                    minWidth: W_TOGGLE,
+                    left: W_SELECT,
+                  }}
                   onClick={() => toggleSort("active")}
                 >
                   <span className="inline-flex items-center gap-1 select-none">
                     ВКЛ
-                    <SortIndicator state={sort.key === "active" ? sort.dir : null} />
+                    <SortIndicator
+                      state={sort.key === "active" ? sort.dir : null}
+                    />
                   </span>
                 </TableHead>
               )}
@@ -1824,14 +2055,20 @@ export function CampaignsPage() {
                   FROZEN_EDGE,
                   HEADER_BG
                 )}
-                style={{ width: colWidths.name, minWidth: colWidths.name, left: nameLeft }}
+                style={{
+                  width: colWidths.name,
+                  minWidth: colWidths.name,
+                  left: nameLeft,
+                }}
                 onClick={() => toggleSort("name")}
               >
                 <span className="flex items-center gap-1 pr-2 select-none">
                   <span className="truncate">
                     {grouped ? "Товар / Кампанія" : "Кампанія"}
                   </span>
-                  <SortIndicator state={sort.key === "name" ? sort.dir : null} />
+                  <SortIndicator
+                    state={sort.key === "name" ? sort.dir : null}
+                  />
                 </span>
                 <ResizeHandle onStart={(e) => startResize("name", e)} />
               </TableHead>
@@ -1842,13 +2079,18 @@ export function CampaignsPage() {
                     "sticky top-0 z-20 cursor-pointer overflow-hidden border-b px-3 text-left",
                     c.emphasize ? HEADER_EMPH : HEADER_BG
                   )}
-                  style={{ width: colWidths[c.key], minWidth: colWidths[c.key] }}
+                  style={{
+                    width: colWidths[c.key],
+                    minWidth: colWidths[c.key],
+                  }}
                   title={c.hint}
                   onClick={() => toggleSort(c.key)}
                 >
                   <span className="flex items-center gap-1 pr-2 select-none">
                     <span className="truncate">{c.label}</span>
-                    <SortIndicator state={sort.key === c.key ? sort.dir : null} />
+                    <SortIndicator
+                      state={sort.key === c.key ? sort.dir : null}
+                    />
                   </span>
                   <ResizeHandle onStart={(e) => startResize(c.key, e)} />
                 </TableHead>
@@ -1860,52 +2102,62 @@ export function CampaignsPage() {
             {switching
               ? Array.from({ length: 8 }, (_, i) => renderSkeletonRow(i))
               : grouped
-              ? (() => {
-                  // "По товарам" = everything tied to a product (groups + singles);
-                  // "По кампаніям" = campaigns with no product id (orphans)
-                  const productCount = entries.filter((e) => e.kind !== "orphan").length
-                  const orphanTotal = entries.length - productCount
-                  const out: React.ReactNode[] = []
-                  let productHeaderDone = false
-                  let campaignHeaderDone = false
-                  for (const e of entries) {
-                    if (!productHeaderDone && e.kind !== "orphan") {
-                      productHeaderDone = true
-                      out.push(
-                        renderDivider("hdr-product", IconPackage, "По товарам", productCount)
-                      )
-                    }
-                    if (!campaignHeaderDone && e.kind === "orphan") {
-                      campaignHeaderDone = true
-                      out.push(
-                        renderDivider(
-                          "hdr-campaign",
-                          IconSpeakerphone,
-                          "По кампаніям",
-                          orphanTotal
+                ? (() => {
+                    // "По товарам" = everything tied to a product (groups + singles);
+                    // "По кампаніям" = campaigns with no product id (orphans)
+                    const productCount = entries.filter(
+                      (e) => e.kind !== "orphan"
+                    ).length
+                    const orphanTotal = entries.length - productCount
+                    const out: React.ReactNode[] = []
+                    let productHeaderDone = false
+                    let campaignHeaderDone = false
+                    for (const e of entries) {
+                      if (!productHeaderDone && e.kind !== "orphan") {
+                        productHeaderDone = true
+                        out.push(
+                          renderDivider(
+                            "hdr-product",
+                            IconPackage,
+                            "По товарам",
+                            productCount
+                          )
                         )
-                      )
+                      }
+                      if (!campaignHeaderDone && e.kind === "orphan") {
+                        campaignHeaderDone = true
+                        out.push(
+                          renderDivider(
+                            "hdr-campaign",
+                            IconSpeakerphone,
+                            "По кампаніям",
+                            orphanTotal
+                          )
+                        )
+                      }
+                      if (e.kind === "orphan") {
+                        out.push(renderRow(e.row, { warn: true }))
+                      } else if (e.kind === "single") {
+                        out.push(renderRow(e.row))
+                      } else {
+                        out.push(
+                          <Fragment key={"g:" + e.id}>
+                            {renderGroupRow(e)}
+                            {expanded.has(e.id) &&
+                              e.rows.map((r) => renderRow(r, { child: true }))}
+                          </Fragment>
+                        )
+                      }
                     }
-                    if (e.kind === "orphan") {
-                      out.push(renderRow(e.row, { warn: true }))
-                    } else if (e.kind === "single") {
-                      out.push(renderRow(e.row))
-                    } else {
-                      out.push(
-                        <Fragment key={"g:" + e.id}>
-                          {renderGroupRow(e)}
-                          {expanded.has(e.id) &&
-                            e.rows.map((r) => renderRow(r, { child: true }))}
-                        </Fragment>
-                      )
-                    }
-                  }
-                  return out
-                })()
-              : rows.map((c) => renderRow(c))}
+                    return out
+                  })()
+                : rows.map((c) => renderRow(c))}
             {!switching && rows.length === 0 && (
               <TableRow className="hover:bg-transparent">
-                <TableCell colSpan={colSpan} className="py-16 text-center text-muted-foreground">
+                <TableCell
+                  colSpan={colSpan}
+                  className="py-16 text-center text-muted-foreground"
+                >
                   Нічого не знайдено за фільтрами
                 </TableCell>
               </TableRow>
@@ -1915,13 +2167,20 @@ export function CampaignsPage() {
           <TableFooter className="border-0 bg-transparent">
             <TableRow className="hover:bg-transparent">
               <TableCell
-                className={cn("sticky bottom-0 left-0 z-30 border-t", FOOTER_BG)}
+                className={cn(
+                  "sticky bottom-0 left-0 z-30 border-t",
+                  FOOTER_BG
+                )}
                 style={{ width: W_SELECT, minWidth: W_SELECT }}
               />
               {showToggleCol && (
                 <TableCell
                   className={cn("sticky bottom-0 z-30 border-t", FOOTER_BG)}
-                  style={{ width: W_TOGGLE, minWidth: W_TOGGLE, left: W_SELECT }}
+                  style={{
+                    width: W_TOGGLE,
+                    minWidth: W_TOGGLE,
+                    left: W_SELECT,
+                  }}
                 />
               )}
               <TableCell
@@ -1930,7 +2189,11 @@ export function CampaignsPage() {
                   FROZEN_EDGE,
                   FOOTER_BG
                 )}
-                style={{ width: colWidths.name, minWidth: colWidths.name, left: nameLeft }}
+                style={{
+                  width: colWidths.name,
+                  minWidth: colWidths.name,
+                  left: nameLeft,
+                }}
               >
                 <span className="truncate">
                   Разом · {rows.length}{" "}
@@ -1947,10 +2210,12 @@ export function CampaignsPage() {
                 >
                   {RATE_KEYS.includes(col.key) ? (
                     <span className="font-medium text-muted-foreground">
-                      сер. {fmt(foot[col.key], col.unit)}
+                      сер. {fmt(foot[col.key], col.unit, currency)}
                     </span>
                   ) : (
-                    <span className="font-bold">{fmt(foot[col.key], col.unit)}</span>
+                    <span className="font-bold">
+                      {fmt(foot[col.key], col.unit, currency)}
+                    </span>
                   )}
                 </TableCell>
               ))}
@@ -2032,7 +2297,9 @@ function SortIndicator({ state }: { state: "asc" | "desc" | null }) {
     return <IconChevronUp className="size-3.5 shrink-0 text-foreground" />
   if (state === "desc")
     return <IconChevronDown className="size-3.5 shrink-0 text-foreground" />
-  return <IconArrowsSort className="size-3.5 shrink-0 text-muted-foreground/35" />
+  return (
+    <IconArrowsSort className="size-3.5 shrink-0 text-muted-foreground/35" />
+  )
 }
 
 const COL_WIDTHS_KEY = "campaigns.colWidths.v1"
@@ -2056,7 +2323,13 @@ function ResizeHandle({ onStart }: { onStart: (e: React.MouseEvent) => void }) {
 }
 
 // row on/off switch that shows a brief loader while the change "saves"
-function RowSwitch({ active, onChange }: { active: boolean; onChange: (v: boolean) => void }) {
+function RowSwitch({
+  active,
+  onChange,
+}: {
+  active: boolean
+  onChange: (v: boolean) => void
+}) {
   const [loading, setLoading] = useState(false)
   function handle(v: boolean) {
     setLoading(true)
