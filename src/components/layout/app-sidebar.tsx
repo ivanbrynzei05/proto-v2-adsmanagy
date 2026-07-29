@@ -1,8 +1,8 @@
 import {
   IconChartBar,
   IconChartPie,
+  IconHelpCircle,
   IconLayoutDashboard,
-  IconRocket,
   IconSettings,
   IconTable,
 } from "@tabler/icons-react"
@@ -64,9 +64,13 @@ export function AppSidebar() {
       <SidebarFooter>
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton tooltip="Первинне налаштування">
-              <IconRocket />
-              <span>Первинне налаштування</span>
+            <SidebarMenuButton
+              isActive={pathname === "/help/faq"}
+              tooltip="Питання та відповіді"
+              render={<NavLink to="/help/faq" />}
+            >
+              <IconHelpCircle />
+              <span>Питання та відповіді</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>

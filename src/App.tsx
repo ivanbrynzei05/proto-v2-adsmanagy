@@ -10,6 +10,8 @@ import { SubscriptionProvider } from "@/features/billing/subscription-context"
 import { CampaignsPage } from "@/pages/campaigns/campaigns"
 import { ConnectAdsPage } from "@/pages/connect/connect-ads"
 import { DashboardPage } from "@/pages/dashboard/dashboard"
+import { FaqPage } from "@/pages/help/faq"
+import { PrivacyPolicyPage } from "@/pages/legal/privacy"
 import { OnboardingPage } from "@/pages/onboarding/onboarding"
 import { SettingsPage } from "@/pages/settings/settings"
 
@@ -36,6 +38,8 @@ export function App() {
                 <Route path="/" element={<DashboardPage />} />
                 <Route path="/campaigns" element={<CampaignsPage />} />
                 <Route path="/settings" element={<SettingsPage />} />
+                <Route path="/help/faq" element={<FaqPage />} />
+                <Route path="/legal/privacy" element={<PrivacyPolicyPage />} />
               </Route>
               <Route path="/onboarding" element={<OnboardingPage />} />
               <Route path="/connect/ads/:token" element={<ConnectAdsPage />} />
