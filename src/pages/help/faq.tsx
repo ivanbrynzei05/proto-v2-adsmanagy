@@ -1,10 +1,8 @@
 import {
   IconChartBar,
-  IconCheck,
   IconChevronDown,
   IconCreditCard,
   IconHelpCircle,
-  IconLink,
   IconMail,
   IconMoodPuzzled,
   IconPlugConnected,
@@ -33,7 +31,6 @@ type Topic = {
   questions: Question[]
 }
 
-const QUESTION_PATH = "/help/faq"
 const QUESTION_PARAM = "q"
 const TOPIC_PARAM = "topic"
 
@@ -55,7 +52,7 @@ function Steps({ items }: { items: ReactNode[] }) {
     <ol className="space-y-2.5">
       {items.map((item, i) => (
         <li key={i} className="flex gap-3">
-          <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-muted text-[11px] font-semibold tabular-nums text-foreground">
+          <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-muted text-[11px] font-semibold text-foreground tabular-nums">
             {i + 1}
           </span>
           <span>{item}</span>
@@ -80,8 +77,8 @@ const TOPICS: Topic[] = [
           <>
             <p>
               Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do
-              eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim
-              ad minim veniam, quis nostrud exercitation ullamco.
+              eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut
+              enim ad minim veniam, quis nostrud exercitation ullamco.
             </p>
             <Steps
               items={[
@@ -299,8 +296,8 @@ const TOPICS: Topic[] = [
         answer: (
           <p>
             Et harum quidem rerum facilis est et expedita distinctio. Nam libero
-            tempore, cum soluta nobis est eligendi optio cumque nihil impedit quo
-            minus id quod maxime placeat.
+            tempore, cum soluta nobis est eligendi optio cumque nihil impedit
+            quo minus id quod maxime placeat.
           </p>
         ),
       },
@@ -321,7 +318,8 @@ const TOPICS: Topic[] = [
               placeat facere possimus, omnis voluptas assumenda est.
             </p>
             <p>
-              Lorem ipsum: <a href="mailto:lorem@example.com">lorem@example.com</a>
+              Lorem ipsum:{" "}
+              <a href="mailto:lorem@example.com">lorem@example.com</a>
             </p>
           </>
         ),
@@ -379,60 +377,29 @@ function AnswerRow({
   isOpen: boolean
   onToggle: () => void
 }) {
-  const [copied, setCopied] = useState(false)
-
-  const copyLink = async () => {
-    const url = `${window.location.origin}${QUESTION_PATH}?${QUESTION_PARAM}=${question.id}`
-    try {
-      await navigator.clipboard.writeText(url)
-      setCopied(true)
-      window.setTimeout(() => setCopied(false), 1500)
-    } catch {
-      // Clipboard can be blocked (insecure origin, denied permission) - the
-      // link is still reachable from the address bar, so just stay silent.
-    }
-  }
-
   return (
-    <div
-      id={`faq-${question.id}`}
-      className="group scroll-mt-24 border-b last:border-b-0"
-    >
-      <div className="flex items-center gap-1">
-        <button
-          type="button"
-          aria-expanded={isOpen}
-          onClick={onToggle}
-          className="flex flex-1 items-center gap-3 py-3.5 text-left"
-        >
-          <span
-            className={cn(
-              "flex-1 text-sm font-medium transition-colors",
-              isOpen ? "text-foreground" : "text-foreground/90"
-            )}
-          >
-            {question.question}
-          </span>
-          <IconChevronDown
-            className={cn(
-              "size-4 shrink-0 text-muted-foreground transition-transform duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]",
-              isOpen && "rotate-180"
-            )}
-          />
-        </button>
-        <button
-          type="button"
-          onClick={copyLink}
-          title="Скопіювати посилання на відповідь"
-          aria-label="Скопіювати посилання на відповідь"
+    <div id={`faq-${question.id}`} className="scroll-mt-24 border-b last:border-b-0">
+      <button
+        type="button"
+        aria-expanded={isOpen}
+        onClick={onToggle}
+        className="flex w-full items-center gap-3 py-3.5 text-left"
+      >
+        <span
           className={cn(
-            "flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground opacity-0 transition-all group-hover:opacity-100 hover:bg-muted hover:text-foreground focus-visible:opacity-100 [&>svg]:size-4",
-            copied && "text-emerald-600 opacity-100 dark:text-emerald-400"
+            "flex-1 text-sm font-medium transition-colors",
+            isOpen ? "text-foreground" : "text-foreground/90"
           )}
         >
-          {copied ? <IconCheck /> : <IconLink />}
-        </button>
-      </div>
+          {question.question}
+        </span>
+        <IconChevronDown
+          className={cn(
+            "size-4 shrink-0 text-muted-foreground transition-transform duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]",
+            isOpen && "rotate-180"
+          )}
+        />
+      </button>
       <div
         className={cn(
           "grid transition-[grid-template-rows] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]",
