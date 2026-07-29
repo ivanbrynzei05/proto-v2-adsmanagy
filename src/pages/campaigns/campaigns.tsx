@@ -4,9 +4,7 @@ import {
   IconArrowsSplit2,
   IconArrowUpRight,
   IconBox,
-  IconCalendar,
   IconChevronDown,
-  IconChevronLeft,
   IconChevronRight,
   IconChevronsDown,
   IconChevronsUp,
@@ -15,6 +13,7 @@ import {
   IconCoin,
   IconColumns,
   IconDownload,
+  IconFilter,
   IconHelpCircle,
   IconLayoutGrid,
   IconPackage,
@@ -46,11 +45,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover"
 import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Switch } from "@/components/ui/switch"
@@ -68,6 +62,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
+import { useIsMobile } from "@/hooks/use-mobile"
 import { cn } from "@/lib/utils"
 import {
   AD_ACCOUNTS,
@@ -86,72 +81,16 @@ import {
   PRODUCTS,
   totals,
   type Column,
+  type ColumnGroup,
   type CurrencyCode,
   type MetricKey,
   type PlatformId,
   type Row,
 } from "./data"
-
-// ---- platform (ad-account) badge ----
-function PlatformBadge({ id, size = 15 }: { id: PlatformId; size?: number }) {
-  const p = PLATFORMS.find((x) => x.id === id)
-  if (!p) return null
-  const logos: Record<PlatformId, React.ReactNode> = {
-    facebook: (
-      <svg viewBox="0 0 24 24" width={size} height={size} aria-hidden="true">
-        <path
-          fill="#1877F2"
-          d="M24 12c0-6.627-5.373-12-12-12S0 5.373 0 12c0 5.99 4.388 10.954 10.125 11.854V15.47H7.078V12h3.047V9.356c0-3.007 1.792-4.668 4.533-4.668 1.312 0 2.686.234 2.686.234v2.953H15.83c-1.49 0-1.955.925-1.955 1.874V12h3.328l-.532 3.469h-2.796v8.385C19.612 22.954 24 17.99 24 12z"
-        />
-      </svg>
-    ),
-    google: (
-      <svg viewBox="0 0 24 24" width={size} height={size} aria-hidden="true">
-        <path
-          fill="#4285F4"
-          d="M23.52 12.273c0-.851-.076-1.67-.218-2.455H12v4.642h6.458a5.52 5.52 0 0 1-2.394 3.622v3.011h3.878c2.269-2.09 3.578-5.165 3.578-8.82z"
-        />
-        <path
-          fill="#34A853"
-          d="M12 24c3.24 0 5.956-1.075 7.942-2.907l-3.878-3.01c-1.075.72-2.45 1.145-4.064 1.145-3.125 0-5.77-2.11-6.714-4.948H1.276v3.11A11.997 11.997 0 0 0 12 24z"
-        />
-        <path
-          fill="#FBBC05"
-          d="M5.286 14.28A7.213 7.213 0 0 1 4.91 12c0-.79.137-1.558.376-2.28V6.61H1.276A11.997 11.997 0 0 0 0 12c0 1.937.464 3.769 1.276 5.39l4.01-3.11z"
-        />
-        <path
-          fill="#EA4335"
-          d="M12 4.773c1.762 0 3.343.605 4.587 1.794l3.44-3.44C17.952 1.19 15.235 0 12 0A11.997 11.997 0 0 0 1.276 6.61l4.01 3.11C6.23 6.882 8.875 4.773 12 4.773z"
-        />
-      </svg>
-    ),
-    tiktok: (
-      <svg viewBox="0 0 24 24" width={size} height={size} aria-hidden="true">
-        <path
-          className="fill-foreground"
-          d="M19.589 6.686a4.793 4.793 0 0 1-3.77-4.245V2h-3.445v13.672a2.896 2.896 0 0 1-5.201 1.743l-.002-.001.002.001a2.895 2.895 0 0 1 3.183-4.51v-3.5a6.329 6.329 0 0 0-5.394 10.692 6.33 6.33 0 0 0 10.857-4.424V8.687a8.182 8.182 0 0 0 4.773 1.526V6.79a4.831 4.831 0 0 1-1.003-.104z"
-        />
-        <path
-          fill="#25F4EE"
-          d="M5.633 16.42a2.895 2.895 0 0 1 3.183-4.51V8.39a6.33 6.33 0 0 0-5.394 10.692 6.33 6.33 0 0 1 2.211-2.662z"
-        />
-        <path
-          fill="#FE2C55"
-          d="M20.592 6.79V6.686a4.793 4.793 0 0 1-2.767-.869 4.793 4.793 0 0 0 2.767.973z"
-        />
-      </svg>
-    ),
-  }
-  return (
-    <span
-      className="inline-grid shrink-0 place-items-center leading-none"
-      title={"Кабінет: " + p.label}
-      style={{ width: size, height: size }}
-    >
-      {logos[id]}
-    </span>
-  )
-}
+import { DateRangePicker } from "./date-range"
+import { addDays, rangeLabel, startOfDay, type DateRange } from "./date-utils"
+import { CampaignFiltersSheet } from "./filters-sheet"
+import { PlatformBadge } from "./platform-badge"
 
 // ---- single metric cell: pill / mini-bar / plain number ----
 // accepts a full Row or an aggregated { metric: value } map (product-group total)
@@ -159,10 +98,13 @@ function ValueCell({
   row,
   col,
   cur = "UAH",
+  compact = false,
 }: {
   row: Record<MetricKey, number>
   col: Column
   cur?: CurrencyCode
+  /** phone layout — drops the decorative mini-bar, keeps the number */
+  compact?: boolean
 }) {
   const v = row[col.key]
 
@@ -177,6 +119,7 @@ function ValueCell({
         variant="outline"
         className={cn(
           "border-transparent tabular-nums",
+          compact && "px-1.5 text-[11px]",
           v >= 0
             ? "bg-emerald-500/12 text-emerald-600 dark:text-emerald-400"
             : "bg-destructive/10 text-destructive"
@@ -187,7 +130,7 @@ function ValueCell({
     )
   }
 
-  if (col.key === "approveRate" || col.key === "buyoutRate") {
+  if (!compact && (col.key === "approveRate" || col.key === "buyoutRate")) {
     return (
       <span className="inline-flex items-center gap-2">
         <span className="w-11 tabular-nums">{fmt(v, col.unit, cur)}</span>
@@ -219,6 +162,12 @@ const ENTITY_NOUN: Record<string, string> = {
   Кампанії: "кампаній",
   "Групи оголошень": "груп оголошень",
   Оголошення: "оголошень",
+}
+// phone tab labels — "Групи оголошень" is too long for a 3-tab strip
+const ENTITY_SHORT: Record<string, string> = {
+  Кампанії: "Кампанії",
+  "Групи оголошень": "Групи",
+  Оголошення: "Оголошення",
 }
 // Synthetic per-level identifier shown under the name: a campaign id on the
 // campaign level, an ad-group id on groups, an ad id on ads. Each level uses a
@@ -384,7 +333,7 @@ function relativeTime(from: Date, nowMs: number): string {
 // "Оновити" + last-updated time, with a small anti-spam rate limiter: three quick
 // clicks in a row lock the button for 5s. Isolated in its own component so its
 // once-a-second tick doesn't re-render the whole table.
-function RefreshControl() {
+function RefreshControl({ compact = false }: { compact?: boolean }) {
   const [lastUpdated, setLastUpdated] = useState(() => new Date())
   const [now, setNow] = useState(() => Date.now())
   const [cooldownUntil, setCooldownUntil] = useState(0)
@@ -416,6 +365,41 @@ function RefreshControl() {
     window.setTimeout(() => setSpinning(false), 600)
   }
 
+  const status = cooling
+    ? `Наступна спроба через ${remaining}с`
+    : relativeTime(lastUpdated, now)
+
+  // on a phone the "Оновити" label goes but the sync time stays — it's the one
+  // thing you can't get back by tapping something
+  if (compact) {
+    return (
+      <div className="flex shrink-0 items-center gap-1.5">
+        <span
+          className={cn(
+            "flex items-center gap-1 text-[11px] whitespace-nowrap",
+            cooling
+              ? "text-amber-600 dark:text-amber-500"
+              : "text-muted-foreground"
+          )}
+        >
+          <IconClock className="size-3 shrink-0" />
+          {cooling ? remaining + "с" : relativeTime(lastUpdated, now)}
+        </span>
+        <Button
+          variant="outline"
+          size="icon-sm"
+          onClick={refresh}
+          disabled={cooling}
+          className={cn(cooling && "text-amber-600 dark:text-amber-500")}
+          title={cooling ? "Забагато оновлень поспіль" : "Оновлено " + status}
+          aria-label="Оновити дані"
+        >
+          <IconRefresh className={cn("size-4", spinning && "animate-spin")} />
+        </Button>
+      </div>
+    )
+  }
+
   return (
     <div className="flex items-center gap-2">
       <span
@@ -427,9 +411,7 @@ function RefreshControl() {
         )}
       >
         <IconClock className="size-3.5 shrink-0" />
-        {cooling
-          ? `Наступна спроба через ${remaining}с`
-          : relativeTime(lastUpdated, now)}
+        {status}
       </span>
       <Button
         variant="outline"
@@ -442,280 +424,6 @@ function RefreshControl() {
         Оновити
       </Button>
     </div>
-  )
-}
-
-// ---- date-range picker (calendar, "від — до") ----
-type DateRange = { from: Date; to: Date }
-
-const UA_MONTHS = [
-  "Січень",
-  "Лютий",
-  "Березень",
-  "Квітень",
-  "Травень",
-  "Червень",
-  "Липень",
-  "Серпень",
-  "Вересень",
-  "Жовтень",
-  "Листопад",
-  "Грудень",
-]
-const UA_MONTHS_SHORT = [
-  "січ",
-  "лют",
-  "бер",
-  "кві",
-  "тра",
-  "чер",
-  "лип",
-  "сер",
-  "вер",
-  "жов",
-  "лис",
-  "гру",
-]
-const UA_WEEKDAYS = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Нд"]
-// earliest selectable day — the window is limited to the last 1.5 months
-const DATE_WINDOW_DAYS = 45
-
-function startOfDay(d: Date) {
-  const x = new Date(d)
-  x.setHours(0, 0, 0, 0)
-  return x
-}
-function addDays(d: Date, n: number) {
-  const x = startOfDay(d)
-  x.setDate(x.getDate() + n)
-  return x
-}
-function sameDay(a: Date, b: Date) {
-  return (
-    a.getFullYear() === b.getFullYear() &&
-    a.getMonth() === b.getMonth() &&
-    a.getDate() === b.getDate()
-  )
-}
-function fmtDay(d: Date, withYear = false) {
-  return (
-    `${d.getDate()} ${UA_MONTHS_SHORT[d.getMonth()]}` +
-    (withYear ? ` ${d.getFullYear()}` : "")
-  )
-}
-// Trigger / footer label: ranges that match a preset show the preset's name; a
-// lone day collapses to its date; anything else reads "від — до".
-function rangeLabel(r: DateRange, today: Date) {
-  const named: [Date, Date, string][] = [
-    [today, today, "Сьогодні"],
-    [addDays(today, -1), addDays(today, -1), "Вчора"],
-    [addDays(today, -6), today, "Останні 7 днів"],
-    [addDays(today, -29), today, "Останні 30 днів"],
-    [addDays(today, -DATE_WINDOW_DAYS), today, "Макс."],
-  ]
-  for (const [f, t, label] of named) {
-    if (sameDay(r.from, f) && sameDay(r.to, t)) return label
-  }
-  if (sameDay(r.from, r.to)) return fmtDay(r.from, true)
-  return `${fmtDay(r.from)} – ${fmtDay(r.to, true)}`
-}
-
-// A calendar popover for picking a "від — до" period. Future days are disabled,
-// and nothing older than DATE_WINDOW_DAYS back can be chosen.
-function DateRangePicker({
-  value,
-  onChange,
-}: {
-  value: DateRange
-  onChange: (r: DateRange) => void
-}) {
-  const [open, setOpen] = useState(false)
-  const today = useMemo(() => startOfDay(new Date()), [])
-  const minDate = useMemo(() => addDays(today, -DATE_WINDOW_DAYS), [today])
-  // 1st of the month currently shown in the grid
-  const [view, setView] = useState(
-    () => new Date(value.to.getFullYear(), value.to.getMonth(), 1)
-  )
-  // the range being edited — only committed to the parent on "Застосувати"
-  const [draft, setDraft] = useState<DateRange>(value)
-  // while an anchor is set we're mid-selection (one end chosen, waiting for the
-  // second); hover previews the other end
-  const [anchor, setAnchor] = useState<Date | null>(null)
-  const [hover, setHover] = useState<Date | null>(null)
-
-  // every time it reopens, snap back to the committed range
-  function handleOpenChange(next: boolean) {
-    if (next) {
-      setView(new Date(value.to.getFullYear(), value.to.getMonth(), 1))
-      setDraft(value)
-      setAnchor(null)
-      setHover(null)
-    }
-    setOpen(next)
-  }
-
-  const monthFirst = new Date(view.getFullYear(), view.getMonth(), 1)
-  const canPrev = monthFirst > minDate
-  const canNext =
-    new Date(view.getFullYear(), view.getMonth() + 1, 1) <=
-    new Date(today.getFullYear(), today.getMonth(), 1)
-
-  // 6×7 grid, Monday-first
-  const gridDays = useMemo(() => {
-    const first = new Date(view.getFullYear(), view.getMonth(), 1)
-    const offset = (first.getDay() + 6) % 7
-    const start = addDays(first, -offset)
-    return Array.from({ length: 42 }, (_, i) => addDays(start, i))
-  }, [view])
-
-  const isDisabled = (d: Date) => d < minDate || d > today
-
-  // range to paint: the anchored start + hovered end while selecting, otherwise
-  // the current draft
-  const a = anchor ?? draft.from
-  const b = anchor ? (hover ?? anchor) : draft.to
-  const lo = a <= b ? a : b
-  const hi = a <= b ? b : a
-
-  function pick(d: Date) {
-    if (isDisabled(d)) return
-    if (!anchor) {
-      // first click — start a fresh selection (draft is a single day for now)
-      setAnchor(d)
-      setDraft({ from: d, to: d })
-      setHover(d)
-      return
-    }
-    // second click — complete the range; stays open until "Застосувати"
-    const from = anchor <= d ? anchor : d
-    const to = anchor <= d ? d : anchor
-    setDraft({ from, to })
-    setAnchor(null)
-    setHover(null)
-  }
-
-  // presets are quick picks — they commit and close right away, no confirm
-  function applyPreset(from: Date, to: Date) {
-    onChange({ from, to })
-    setOpen(false)
-  }
-
-  function apply() {
-    onChange(draft)
-    setOpen(false)
-  }
-
-  const presets: [string, () => void][] = [
-    ["Сьогодні", () => applyPreset(today, today)],
-    ["Вчора", () => applyPreset(addDays(today, -1), addDays(today, -1))],
-    ["Останні 7 днів", () => applyPreset(addDays(today, -6), today)],
-    ["Останні 30 днів", () => applyPreset(addDays(today, -29), today)],
-    ["Макс.", () => applyPreset(minDate, today)],
-  ]
-
-  return (
-    <Popover open={open} onOpenChange={handleOpenChange}>
-      <PopoverTrigger
-        render={
-          <Button variant="secondary" size="sm" className="mb-2 gap-1.5">
-            <IconCalendar className="size-4 text-muted-foreground" />
-            {rangeLabel(value, today)}
-            <IconChevronDown className="size-4 text-muted-foreground" />
-          </Button>
-        }
-      />
-      <PopoverContent align="end" className="w-auto p-0">
-        <div className="flex">
-          {/* quick presets */}
-          <div className="flex w-40 shrink-0 flex-col gap-0.5 border-r p-2">
-            {presets.map(([label, fn]) => (
-              <button
-                key={label}
-                onClick={fn}
-                className="rounded-md px-2 py-1.5 text-left text-[13px] hover:bg-muted"
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-          {/* month calendar */}
-          <div className="p-3">
-            <div className="mb-2 flex items-center justify-between">
-              <button
-                onClick={() =>
-                  setView(new Date(view.getFullYear(), view.getMonth() - 1, 1))
-                }
-                disabled={!canPrev}
-                aria-label="Попередній місяць"
-                className="grid size-7 place-items-center rounded-md text-muted-foreground hover:bg-muted disabled:pointer-events-none disabled:opacity-30"
-              >
-                <IconChevronLeft className="size-4" />
-              </button>
-              <span className="text-[13px] font-semibold">
-                {UA_MONTHS[view.getMonth()]} {view.getFullYear()}
-              </span>
-              <button
-                onClick={() =>
-                  setView(new Date(view.getFullYear(), view.getMonth() + 1, 1))
-                }
-                disabled={!canNext}
-                aria-label="Наступний місяць"
-                className="grid size-7 place-items-center rounded-md text-muted-foreground hover:bg-muted disabled:pointer-events-none disabled:opacity-30"
-              >
-                <IconChevronRight className="size-4" />
-              </button>
-            </div>
-            <div className="grid grid-cols-[repeat(7,36px)] gap-y-1">
-              {UA_WEEKDAYS.map((w) => (
-                <span
-                  key={w}
-                  className="grid h-7 place-items-center text-[11px] font-medium text-muted-foreground"
-                >
-                  {w}
-                </span>
-              ))}
-              {gridDays.map((d) => {
-                const outside = d.getMonth() !== view.getMonth()
-                const disabled = isDisabled(d)
-                const inRange = d >= lo && d <= hi
-                const isLo = sameDay(d, lo)
-                const isHi = sameDay(d, hi)
-                const isEnd = isLo || isHi
-                return (
-                  <button
-                    key={d.getTime()}
-                    onClick={() => pick(d)}
-                    onMouseEnter={() => anchor && setHover(d)}
-                    disabled={disabled}
-                    className={cn(
-                      "grid h-8 w-9 place-items-center text-[13px] tabular-nums transition-colors",
-                      "disabled:pointer-events-none disabled:opacity-30",
-                      inRange && !isEnd && "bg-primary/15",
-                      inRange && isLo && "rounded-l-md",
-                      inRange && isHi && "rounded-r-md",
-                      isEnd
-                        ? "rounded-md bg-primary font-semibold text-primary-foreground"
-                        : !inRange && "rounded-md hover:bg-muted",
-                      outside && !inRange && "text-muted-foreground/50"
-                    )}
-                  >
-                    {d.getDate()}
-                  </button>
-                )
-              })}
-            </div>
-            <div className="mt-3 flex items-center justify-between gap-3 border-t pt-3">
-              <span className="text-[12px] font-medium tabular-nums">
-                {rangeLabel(draft, today)}
-              </span>
-              <Button size="sm" onClick={apply}>
-                Застосувати
-              </Button>
-            </div>
-          </div>
-        </div>
-      </PopoverContent>
-    </Popover>
   )
 }
 
@@ -738,6 +446,10 @@ type DisplayEntry =
 
 export function CampaignsPage() {
   const allCols = COLUMNS
+  // phones get a single "Фільтри" button + bottom sheet instead of the three
+  // toolbar rows, and a denser table (see the DENSITY_* constants below)
+  const isMobile = useIsMobile()
+  const [filtersOpen, setFiltersOpen] = useState(false)
   const [visible, setVisible] = useState<Record<string, boolean>>(() =>
     Object.fromEntries(allCols.map((c) => [c.key, true]))
   )
@@ -815,6 +527,9 @@ export function CampaignsPage() {
     () => new Set(AD_ACCOUNTS.map((a) => a.id))
   )
   const showToggleCol = true
+  // bulk selection is a desktop affordance — on a phone the frozen block has to
+  // stay under ~210px, and rows are opened by tapping their name instead
+  const showSelectCol = !isMobile
   const [drill, setDrill] = useState<{ campaigns: string[]; groups: string[] }>(
     {
       campaigns: [],
@@ -1175,14 +890,67 @@ export function CampaignsPage() {
         ? selAccounts[0].name
         : selAccounts.length + " акаунти"
 
-  const colSpan = cols.length + 2 + (showToggleCol ? 1 : 0)
+  // ---- mobile filter sheet plumbing ----
+  const hiddenCols = allCols.length - cols.length
+  // how many filters differ from the default — the number on the "Фільтри" pill
+  const activeFilterCount =
+    (platforms.size < PLATFORMS.length ? 1 : 0) +
+    (selAccounts.length < scopedAccounts.length ? 1 : 0) +
+    (breakdown !== BREAKDOWN_PRODUCT ? 1 : 0) +
+    (currency !== "UAH" ? 1 : 0) +
+    (hiddenCols > 0 ? 1 : 0)
+
+  function selectAllPlatforms() {
+    setPlatforms(new Set(PLATFORMS.map((p) => p.id)))
+    setAdAccounts(ALL_ACCOUNTS())
+    setSel(new Set())
+    setDrill({ campaigns: [], groups: [] })
+  }
+  function selectAllAdAccounts() {
+    setAdAccounts(ALL_ACCOUNTS())
+    setSel(new Set())
+    setDrill({ campaigns: [], groups: [] })
+  }
+  function applyColumnPreset(groups: ColumnGroup[] | null) {
+    setVisible(
+      Object.fromEntries(
+        allCols.map((c) => [c.key, groups ? groups.includes(c.group) : true])
+      )
+    )
+  }
+  // "Скинути" in the sheet — back to the state the page opens in
+  function resetFilters() {
+    selectAllPlatforms()
+    applyColumnPreset(null)
+    setBreakdown(BREAKDOWN_PRODUCT)
+    setCurrency("UAH")
+    setQuery("")
+    const t = startOfDay(new Date())
+    setDateRange({ from: addDays(t, -6), to: t })
+  }
+
+  const colSpan =
+    cols.length + 1 + (showSelectCol ? 1 : 0) + (showToggleCol ? 1 : 0)
 
   // Fixed frozen-column widths (px). Keeping them explicit means the sticky `left`
   // offsets can never drift out of sync with the rendered columns, so the frozen
   // block and the scrolling block always line up seamlessly.
   const W_SELECT = 44
-  const W_TOGGLE = 52
-  const nameLeft = W_SELECT + (showToggleCol ? W_TOGGLE : 0)
+  // on a phone this is the leftmost column, so it needs enough room for "ВКЛ" +
+  // the sort arrow to sit centred instead of touching the card edge
+  const W_TOGGLE = isMobile ? 56 : 52
+  const toggleLeft = showSelectCol ? W_SELECT : 0
+  const nameLeft = toggleLeft + (showToggleCol ? W_TOGGLE : 0)
+  // On a phone the name column is fixed (resizing needs a mouse) and metric
+  // columns shrink to roughly two-and-a-bit per screen — wide enough for the
+  // longest formatted number, narrow enough to swipe through quickly.
+  const nameW = isMobile ? 158 : colWidths.name
+  const colW = (c: Column) =>
+    isMobile ? mobileColWidth(c.label) : colWidths[c.key]
+  // phone density — one notch tighter than the desktop px-3 / py-2 cells
+  const cellPad = isMobile ? "px-2 py-1.5" : "px-3"
+  const nameXPad = isMobile ? "pl-2" : "pl-3"
+  const rowYPad = isMobile ? "py-1.5" : "py-2"
   // opaque tone for the frozen cells; child rows get the muted wash
   const frozenBg = (selected: boolean, child = false) =>
     selected ? FROZEN_SEL : child ? CHILD_FROZEN : FROZEN_BASE
@@ -1196,7 +964,9 @@ export function CampaignsPage() {
     warn?: boolean // show the "no product id" warning
   }
   function renderRow(c: Indexed, opts: RowOpts = {}) {
-    const selected = sel.has(c._i)
+    // without the checkbox column there's no way to change the selection, so a
+    // selection carried over from a wider viewport must not tint rows
+    const selected = showSelectCol && sel.has(c._i)
     const child = !!opts.child
     const displayName = c.name
     return (
@@ -1204,28 +974,30 @@ export function CampaignsPage() {
         key={c._i}
         className={cn("group/row border-0", rowBg(selected, child))}
       >
-        <TableCell
-          className={cn(
-            "sticky left-0 z-20 border-b px-0 text-center",
-            frozenBg(selected, child)
-          )}
-          style={{ width: W_SELECT, minWidth: W_SELECT }}
-        >
-          <div className="flex justify-center">
-            <Checkbox
-              checked={selected}
-              onCheckedChange={() => toggleSel(c._i)}
-              aria-label="Обрати рядок"
-            />
-          </div>
-        </TableCell>
+        {showSelectCol && (
+          <TableCell
+            className={cn(
+              "sticky left-0 z-20 border-b px-0 text-center",
+              frozenBg(selected, child)
+            )}
+            style={{ width: W_SELECT, minWidth: W_SELECT }}
+          >
+            <div className="flex justify-center">
+              <Checkbox
+                checked={selected}
+                onCheckedChange={() => toggleSel(c._i)}
+                aria-label="Обрати рядок"
+              />
+            </div>
+          </TableCell>
+        )}
         {showToggleCol && (
           <TableCell
             className={cn(
               "sticky z-20 border-b px-0 text-center",
               frozenBg(selected, child)
             )}
-            style={{ width: W_TOGGLE, minWidth: W_TOGGLE, left: W_SELECT }}
+            style={{ width: W_TOGGLE, minWidth: W_TOGGLE, left: toggleLeft }}
           >
             <div className="flex justify-center">
               <RowSwitch
@@ -1237,14 +1009,16 @@ export function CampaignsPage() {
         )}
         <TableCell
           className={cn(
-            "sticky z-20 overflow-hidden border-b py-2 pl-3",
+            "sticky z-20 overflow-hidden border-b",
+            rowYPad,
+            nameXPad,
             FROZEN_EDGE,
             frozenBg(selected, child)
           )}
           style={{
-            width: colWidths.name,
-            minWidth: colWidths.name,
-            maxWidth: colWidths.name,
+            width: nameW,
+            minWidth: nameW,
+            maxWidth: nameW,
             left: nameLeft,
           }}
         >
@@ -1317,14 +1091,20 @@ export function CampaignsPage() {
             <TableCell
               key={col.key}
               className={cn(
-                "overflow-hidden border-b px-3 text-left tabular-nums",
+                "overflow-hidden border-b text-left tabular-nums",
+                cellPad,
                 col.emphasize && "bg-primary/[0.045] font-medium"
               )}
             >
               {unknown ? (
                 <UnknownCell />
               ) : (
-                <ValueCell row={c} col={col} cur={currency} />
+                <ValueCell
+                  row={c}
+                  col={col}
+                  cur={currency}
+                  compact={isMobile}
+                />
               )}
             </TableCell>
           )
@@ -1371,29 +1151,31 @@ export function CampaignsPage() {
 
     return (
       <TableRow className={cn("group/row border-0", GROUP_BG)}>
-        <TableCell
-          className={cn(
-            "sticky left-0 z-20 border-b px-0 text-center",
-            GROUP_FROZEN
-          )}
-          style={{ width: W_SELECT, minWidth: W_SELECT }}
-        >
-          <div className="flex justify-center">
-            <Checkbox
-              checked={allChildSel}
-              indeterminate={someChildSel && !allChildSel}
-              onCheckedChange={() => setGroupSel(childIdx, !allChildSel)}
-              aria-label={"Обрати всі кампанії товару " + e.product}
-            />
-          </div>
-        </TableCell>
+        {showSelectCol && (
+          <TableCell
+            className={cn(
+              "sticky left-0 z-20 border-b px-0 text-center",
+              GROUP_FROZEN
+            )}
+            style={{ width: W_SELECT, minWidth: W_SELECT }}
+          >
+            <div className="flex justify-center">
+              <Checkbox
+                checked={allChildSel}
+                indeterminate={someChildSel && !allChildSel}
+                onCheckedChange={() => setGroupSel(childIdx, !allChildSel)}
+                aria-label={"Обрати всі кампанії товару " + e.product}
+              />
+            </div>
+          </TableCell>
+        )}
         {showToggleCol && (
           <TableCell
             className={cn(
               "sticky z-20 border-b px-0 text-center",
               GROUP_FROZEN
             )}
-            style={{ width: W_TOGGLE, minWidth: W_TOGGLE, left: W_SELECT }}
+            style={{ width: W_TOGGLE, minWidth: W_TOGGLE, left: toggleLeft }}
           >
             <span
               className="inline-flex items-center rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground tabular-nums"
@@ -1405,14 +1187,15 @@ export function CampaignsPage() {
         )}
         <TableCell
           className={cn(
-            "sticky z-20 overflow-hidden border-b py-2 pl-2",
+            "sticky z-20 overflow-hidden border-b pl-2",
+            rowYPad,
             FROZEN_EDGE,
             GROUP_FROZEN
           )}
           style={{
-            width: colWidths.name,
-            minWidth: colWidths.name,
-            maxWidth: colWidths.name,
+            width: nameW,
+            minWidth: nameW,
+            maxWidth: nameW,
             left: nameLeft,
           }}
         >
@@ -1420,7 +1203,10 @@ export function CampaignsPage() {
             {/* chevron + icon toggle expand/collapse */}
             <button
               onClick={() => toggleExpand(e.id)}
-              className="flex shrink-0 items-center gap-2"
+              className={cn(
+                "flex shrink-0 items-center",
+                isMobile ? "-mx-0.5" : "gap-2"
+              )}
               title={isExp ? "Згорнути товар" : "Розгорнути товар"}
             >
               <IconChevronRight
@@ -1429,11 +1215,13 @@ export function CampaignsPage() {
                   isExp && "rotate-90"
                 )}
               />
-              {iconBox}
+              {/* the box icon and the round counter are the first things to go
+                  when the frozen column shrinks to phone width */}
+              {!isMobile && iconBox}
             </button>
             <span className="flex min-w-0 flex-col gap-0.5">
               <span className="flex min-w-0 items-center gap-1.5">
-                {idChip}
+                {!isMobile && idChip}
                 {isLeaf ? (
                   <span className="min-w-0 truncate font-semibold">
                     {e.product}
@@ -1452,22 +1240,30 @@ export function CampaignsPage() {
                   </button>
                 )}
               </span>
-              <span className="text-[11px] text-muted-foreground">
-                {e.activeCount} активних
+              {/* on a phone the ВКЛ column already reads "2/3", so the subline
+                  only has to carry the product id */}
+              <span className="truncate text-[11px] text-muted-foreground">
+                {isMobile ? "#" + e.id : `${e.activeCount} активних`}
               </span>
             </span>
-            {countBadge}
+            {!isMobile && countBadge}
           </div>
         </TableCell>
         {cols.map((col) => (
           <TableCell
             key={col.key}
             className={cn(
-              "overflow-hidden border-b px-3 text-left font-semibold tabular-nums",
+              "overflow-hidden border-b text-left font-semibold tabular-nums",
+              cellPad,
               col.emphasize && "bg-primary/[0.06]"
             )}
           >
-            <ValueCell row={e.agg} col={col} cur={currency} />
+            <ValueCell
+              row={e.agg}
+              col={col}
+              cur={currency}
+              compact={isMobile}
+            />
           </TableCell>
         ))}
       </TableRow>
@@ -1484,26 +1280,29 @@ export function CampaignsPage() {
   ) {
     return (
       <TableRow key={key} className="hover:bg-transparent">
-        <TableCell
-          className={cn("sticky left-0 z-20 border-y", FOOTER_BG)}
-          style={{ width: W_SELECT, minWidth: W_SELECT }}
-        />
+        {showSelectCol && (
+          <TableCell
+            className={cn("sticky left-0 z-20 border-y", FOOTER_BG)}
+            style={{ width: W_SELECT, minWidth: W_SELECT }}
+          />
+        )}
         {showToggleCol && (
           <TableCell
             className={cn("sticky z-20 border-y", FOOTER_BG)}
-            style={{ width: W_TOGGLE, minWidth: W_TOGGLE, left: W_SELECT }}
+            style={{ width: W_TOGGLE, minWidth: W_TOGGLE, left: toggleLeft }}
           />
         )}
         <TableCell
           className={cn(
-            "sticky z-20 overflow-hidden border-y py-1.5 pl-3",
+            "sticky z-20 overflow-hidden border-y py-1.5",
+            nameXPad,
             FROZEN_EDGE,
             FOOTER_BG
           )}
           style={{
-            width: colWidths.name,
-            minWidth: colWidths.name,
-            maxWidth: colWidths.name,
+            width: nameW,
+            minWidth: nameW,
+            maxWidth: nameW,
             left: nameLeft,
           }}
         >
@@ -1526,18 +1325,20 @@ export function CampaignsPage() {
   function renderSkeletonRow(i: number) {
     return (
       <TableRow key={"sk" + i} className="hover:bg-transparent">
-        <TableCell
-          className={cn("sticky left-0 z-20 border-b", FROZEN_BASE)}
-          style={{ width: W_SELECT, minWidth: W_SELECT }}
-        >
-          <div className="flex justify-center">
-            <Skeleton className="size-[18px] rounded-[5px]" />
-          </div>
-        </TableCell>
+        {showSelectCol && (
+          <TableCell
+            className={cn("sticky left-0 z-20 border-b", FROZEN_BASE)}
+            style={{ width: W_SELECT, minWidth: W_SELECT }}
+          >
+            <div className="flex justify-center">
+              <Skeleton className="size-[18px] rounded-[5px]" />
+            </div>
+          </TableCell>
+        )}
         {showToggleCol && (
           <TableCell
             className={cn("sticky z-20 border-b", FROZEN_BASE)}
-            style={{ width: W_TOGGLE, minWidth: W_TOGGLE, left: W_SELECT }}
+            style={{ width: W_TOGGLE, minWidth: W_TOGGLE, left: toggleLeft }}
           >
             <div className="flex justify-center">
               <Skeleton className="h-[18px] w-8 rounded-full" />
@@ -1546,14 +1347,16 @@ export function CampaignsPage() {
         )}
         <TableCell
           className={cn(
-            "sticky z-20 overflow-hidden border-b py-2 pl-3",
+            "sticky z-20 overflow-hidden border-b",
+            rowYPad,
+            nameXPad,
             FROZEN_EDGE,
             FROZEN_BASE
           )}
           style={{
-            width: colWidths.name,
-            minWidth: colWidths.name,
-            maxWidth: colWidths.name,
+            width: nameW,
+            minWidth: nameW,
+            maxWidth: nameW,
             left: nameLeft,
           }}
         >
@@ -1569,7 +1372,7 @@ export function CampaignsPage() {
           </div>
         </TableCell>
         {cols.map((col) => (
-          <TableCell key={col.key} className="border-b px-3">
+          <TableCell key={col.key} className={cn("border-b", cellPad)}>
             <Skeleton
               className="h-4"
               style={{ width: 32 + ((i * 19 + col.key.length * 7) % 28) }}
@@ -1584,18 +1387,24 @@ export function CampaignsPage() {
   if (firstLoad) return <CampaignsSkeleton cols={cols.length} />
 
   return (
-    <div className="flex h-[calc(100svh-58px)] w-full min-w-0 flex-col gap-4 overflow-hidden p-4 md:p-6">
-      {/* flat order-sync health strip — stands in for the page title */}
-      <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1.5 rounded-xl bg-card px-3.5 py-2.5 text-[13px] shadow-xs">
+    <div className="flex h-[calc(100svh-58px)] w-full min-w-0 flex-col gap-2.5 overflow-hidden p-2.5 sm:gap-4 sm:p-4 md:p-6">
+      {/* flat order-sync health strip — stands in for the page title. Narrow
+          screens drop the bar and the link's label and make the whole strip the
+          tap target, so it always stays a single line. */}
+      <button
+        type="button"
+        className="flex w-full shrink-0 items-center gap-2 rounded-xl bg-card px-3 py-2 text-left text-xs shadow-xs sm:gap-3 sm:px-3.5 sm:py-2.5 sm:text-[13px]"
+      >
         <span className="grid size-6 shrink-0 place-items-center rounded-md bg-amber-500/12 text-amber-600 dark:text-amber-400">
           <IconPlugConnectedX className="size-4" />
         </span>
-        <span>
+        <span className="min-w-0 flex-1 truncate sm:flex-none">
           <b className="font-semibold tabular-nums">{unsyncedPct}%</b> замовлень
-          не синхронізовано з кампаніями
+          не синхронізовано
+          <span className="hidden sm:inline"> з кампаніями</span>
         </span>
         <span
-          className="h-1.5 w-20 shrink-0 overflow-hidden rounded-full bg-muted"
+          className="hidden h-1.5 w-20 shrink-0 overflow-hidden rounded-full bg-muted sm:block"
           title={unsyncedPct + "% не синхронізовано"}
         >
           <span
@@ -1603,149 +1412,196 @@ export function CampaignsPage() {
             style={{ width: unsyncedPct + "%" }}
           />
         </span>
-        <button
-          type="button"
-          className="ml-auto inline-flex shrink-0 items-center gap-1 font-medium text-primary hover:underline"
-        >
+        <span className="ml-auto hidden shrink-0 items-center gap-1 font-medium text-primary hover:underline sm:inline-flex">
           Дізнатися чому
           <IconArrowUpRight className="size-3.5" />
-        </button>
-      </div>
+        </span>
+        <IconArrowUpRight
+          className="size-4 shrink-0 text-primary sm:hidden"
+          aria-label="Дізнатися чому"
+        />
+      </button>
 
       <Card className="flex min-h-0 flex-1 flex-col gap-0 overflow-hidden py-0">
-        {/* data-source hierarchy: platform › ad account */}
-        <div className="flex flex-wrap items-center gap-x-1.5 gap-y-2 border-b p-3.5">
-          {/* level 1 — platform */}
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              render={
-                <Button variant="outline" size="sm" className="gap-1.5">
-                  <IconWorld className="size-4 text-muted-foreground" />
-                  {platLabel}
-                  <IconChevronDown className="size-4 text-muted-foreground" />
-                </Button>
-              }
-            />
-            <DropdownMenuContent align="start" className="w-56">
-              <DropdownMenuLabel className="tracking-wide uppercase">
-                Платформа
-              </DropdownMenuLabel>
-              {PLATFORMS.map((p) => (
-                <DropdownMenuCheckboxItem
-                  key={p.id}
-                  checked={platforms.has(p.id)}
-                  onCheckedChange={() => togglePlatform(p.id)}
-                  closeOnClick={false}
-                >
-                  <span className="flex items-center gap-2">
-                    <PlatformBadge id={p.id} size={16} />
-                    {p.label}
-                  </span>
-                </DropdownMenuCheckboxItem>
-              ))}
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                closeOnClick={false}
-                onClick={() => {
-                  setPlatforms(new Set(PLATFORMS.map((p) => p.id)))
-                  setAdAccounts(ALL_ACCOUNTS())
-                  setSel(new Set())
-                  setDrill({ campaigns: [], groups: [] })
-                }}
-              >
-                Обрати всі
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+        {/* phone toolbar: search + one "Фільтри" button, with the applied
+            filters spelled out underneath (see the sheet at the bottom) */}
+        {isMobile && (
+          <div className="flex items-center gap-2 border-b p-2.5">
+            <div className="relative min-w-0 flex-1">
+              <IconSearch className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                className="h-9 pl-8.5 text-[13px]"
+                placeholder="Пошук за назвою"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+              />
+            </div>
+            <Button
+              variant={activeFilterCount > 0 ? "secondary" : "outline"}
+              size="sm"
+              className="h-9 shrink-0"
+              onClick={() => setFiltersOpen(true)}
+            >
+              <IconFilter className="size-4" />
+              Фільтри
+              {activeFilterCount > 0 && (
+                <span className="grid size-4.5 place-items-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground tabular-nums">
+                  {activeFilterCount}
+                </span>
+              )}
+            </Button>
+          </div>
+        )}
 
-          <IconChevronRight className="size-4 shrink-0 text-muted-foreground/50" />
-
-          {/* level 2 — ad account (scoped to the chosen platform(s)) */}
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              render={
-                <Button variant="outline" size="sm" className="gap-1.5">
-                  <IconStack2 className="size-4 text-muted-foreground" />
-                  {accLabel}
-                  <IconChevronDown className="size-4 text-muted-foreground" />
-                </Button>
-              }
-            />
-            <DropdownMenuContent align="start" className="w-64">
-              <DropdownMenuLabel className="tracking-wide uppercase">
-                Рекламні акаунти
-              </DropdownMenuLabel>
-              {scopedAccounts.length === 0 ? (
-                <div className="px-2 py-4 text-center text-xs text-muted-foreground">
-                  Немає акаунтів для цих платформ
-                </div>
-              ) : (
-                scopedAccounts.map((a) => (
+        {/* data-source hierarchy: platform › ad account — desktop only; on a
+            phone these live in the filter sheet */}
+        {!isMobile && (
+          <div className="flex flex-wrap items-center gap-x-1.5 gap-y-2 border-b p-3.5">
+            {/* level 1 — platform */}
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={
+                  <Button variant="outline" size="sm" className="gap-1.5">
+                    <IconWorld className="size-4 text-muted-foreground" />
+                    {platLabel}
+                    <IconChevronDown className="size-4 text-muted-foreground" />
+                  </Button>
+                }
+              />
+              <DropdownMenuContent align="start" className="w-56">
+                <DropdownMenuLabel className="tracking-wide uppercase">
+                  Платформа
+                </DropdownMenuLabel>
+                {PLATFORMS.map((p) => (
                   <DropdownMenuCheckboxItem
-                    key={a.id}
-                    checked={adAccounts.has(a.id)}
-                    onCheckedChange={() => toggleAdAccount(a.id)}
+                    key={p.id}
+                    checked={platforms.has(p.id)}
+                    onCheckedChange={() => togglePlatform(p.id)}
                     closeOnClick={false}
                   >
                     <span className="flex items-center gap-2">
-                      <PlatformBadge id={a.platform} size={15} />
-                      {a.name}
+                      <PlatformBadge id={p.id} size={16} />
+                      {p.label}
                     </span>
                   </DropdownMenuCheckboxItem>
-                ))
-              )}
-              {scopedAccounts.length > 0 && (
-                <>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    closeOnClick={false}
-                    onClick={() => {
-                      setAdAccounts(ALL_ACCOUNTS())
-                      setSel(new Set())
-                      setDrill({ campaigns: [], groups: [] })
-                    }}
-                  >
-                    Обрати всі
-                  </DropdownMenuItem>
-                </>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
-
-          <div className="ml-auto" />
-          {/* display currency for money columns */}
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              render={
-                <Button variant="outline" size="sm" className="gap-1.5">
-                  <IconCoin className="size-4 text-muted-foreground" />
-                  {currency} {CURRENCY_SYMBOLS[currency]}
-                  <IconChevronDown className="size-4 text-muted-foreground" />
-                </Button>
-              }
-            />
-            <DropdownMenuContent align="end">
-              <DropdownMenuLabel className="tracking-wide uppercase">
-                Валюта
-              </DropdownMenuLabel>
-              <DropdownMenuRadioGroup
-                value={currency}
-                onValueChange={(v) => setCurrency(v as CurrencyCode)}
-              >
-                {CURRENCIES.map((c) => (
-                  <DropdownMenuRadioItem key={c} value={c} closeOnClick>
-                    {c} {CURRENCY_SYMBOLS[c]}
-                  </DropdownMenuRadioItem>
                 ))}
-              </DropdownMenuRadioGroup>
-            </DropdownMenuContent>
-          </DropdownMenu>
-          <RefreshControl />
-        </div>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  closeOnClick={false}
+                  onClick={() => {
+                    setPlatforms(new Set(PLATFORMS.map((p) => p.id)))
+                    setAdAccounts(ALL_ACCOUNTS())
+                    setSel(new Set())
+                    setDrill({ campaigns: [], groups: [] })
+                  }}
+                >
+                  Обрати всі
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            <IconChevronRight className="size-4 shrink-0 text-muted-foreground/50" />
+
+            {/* level 2 — ad account (scoped to the chosen platform(s)) */}
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={
+                  <Button variant="outline" size="sm" className="gap-1.5">
+                    <IconStack2 className="size-4 text-muted-foreground" />
+                    {accLabel}
+                    <IconChevronDown className="size-4 text-muted-foreground" />
+                  </Button>
+                }
+              />
+              <DropdownMenuContent align="start" className="w-64">
+                <DropdownMenuLabel className="tracking-wide uppercase">
+                  Рекламні акаунти
+                </DropdownMenuLabel>
+                {scopedAccounts.length === 0 ? (
+                  <div className="px-2 py-4 text-center text-xs text-muted-foreground">
+                    Немає акаунтів для цих платформ
+                  </div>
+                ) : (
+                  scopedAccounts.map((a) => (
+                    <DropdownMenuCheckboxItem
+                      key={a.id}
+                      checked={adAccounts.has(a.id)}
+                      onCheckedChange={() => toggleAdAccount(a.id)}
+                      closeOnClick={false}
+                    >
+                      <span className="flex items-center gap-2">
+                        <PlatformBadge id={a.platform} size={15} />
+                        {a.name}
+                      </span>
+                    </DropdownMenuCheckboxItem>
+                  ))
+                )}
+                {scopedAccounts.length > 0 && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      closeOnClick={false}
+                      onClick={() => {
+                        setAdAccounts(ALL_ACCOUNTS())
+                        setSel(new Set())
+                        setDrill({ campaigns: [], groups: [] })
+                      }}
+                    >
+                      Обрати всі
+                    </DropdownMenuItem>
+                  </>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            <div className="ml-auto" />
+            {/* display currency for money columns */}
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={
+                  <Button variant="outline" size="sm" className="gap-1.5">
+                    <IconCoin className="size-4 text-muted-foreground" />
+                    {currency} {CURRENCY_SYMBOLS[currency]}
+                    <IconChevronDown className="size-4 text-muted-foreground" />
+                  </Button>
+                }
+              />
+              <DropdownMenuContent align="end">
+                <DropdownMenuLabel className="tracking-wide uppercase">
+                  Валюта
+                </DropdownMenuLabel>
+                <DropdownMenuRadioGroup
+                  value={currency}
+                  onValueChange={(v) => setCurrency(v as CurrencyCode)}
+                >
+                  {CURRENCIES.map((c) => (
+                    <DropdownMenuRadioItem key={c} value={c} closeOnClick>
+                      {c} {CURRENCY_SYMBOLS[c]}
+                    </DropdownMenuRadioItem>
+                  ))}
+                </DropdownMenuRadioGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <RefreshControl />
+          </div>
+        )}
 
         {/* entity subtabs + date range (same row, date on the right) */}
-        <div className="flex items-center justify-between gap-2 border-b px-3.5 pt-2.5">
-          <div className="flex items-center gap-1">
+        <div
+          className={cn(
+            "flex items-center justify-between gap-2 border-b",
+            isMobile ? "px-2.5" : "px-3.5 pt-2.5"
+          )}
+        >
+          {/* the tabs scroll sideways on a phone instead of wrapping —
+              overflow-y stays clipped so the row can't scroll vertically */}
+          <div
+            className={cn(
+              "flex items-center gap-1",
+              isMobile &&
+                "-mx-2.5 min-w-0 flex-1 [scrollbar-width:none] overflow-x-auto overflow-y-hidden px-2.5 [&::-webkit-scrollbar]:hidden"
+            )}
+          >
             {ENTITY_TABS.map(([t, EntIcon]) => {
               const active = entity === t
               return (
@@ -1753,14 +1609,17 @@ export function CampaignsPage() {
                   key={t}
                   onClick={() => switchEntity(t)}
                   className={cn(
-                    "-mb-px flex items-center gap-2 rounded-t-md border-b-2 px-3.5 py-2.5 text-[13px] font-semibold transition-colors",
+                    "flex shrink-0 items-center gap-2 rounded-t-md border-b-2 font-semibold transition-colors",
+                    isMobile
+                      ? "gap-1.5 px-2 py-2.5 text-xs"
+                      : "-mb-px px-3.5 py-2.5 text-[13px]",
                     active
                       ? "border-primary text-primary"
                       : "border-transparent text-muted-foreground hover:text-foreground"
                   )}
                 >
-                  <EntIcon className="size-4" />
-                  {t}
+                  <EntIcon className={isMobile ? "size-3.5" : "size-4"} />
+                  {isMobile ? ENTITY_SHORT[t] : t}
                   <span
                     className={cn(
                       "rounded-full px-1.5 py-0.5 text-[11px] font-semibold tabular-nums",
@@ -1775,216 +1634,284 @@ export function CampaignsPage() {
               )
             })}
           </div>
-          <DateRangePicker value={dateRange} onChange={setDateRange} />
+          {!isMobile && (
+            <DateRangePicker
+              value={dateRange}
+              onChange={setDateRange}
+              className="mb-2"
+            />
+          )}
         </div>
+
+        {/* phone: what the filters currently add up to — tapping any of it
+            reopens the sheet on that setting */}
+        {isMobile && (
+          <div className="flex items-center gap-1.5 border-b px-2.5 py-2">
+            <button
+              type="button"
+              onClick={() => setFiltersOpen(true)}
+              className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto text-left"
+            >
+              {[
+                rangeLabel(dateRange, startOfDay(new Date())),
+                breakdown,
+                platforms.size < PLATFORMS.length ? platLabel : null,
+                selAccounts.length < scopedAccounts.length ? accLabel : null,
+                currency !== "UAH" ? currency : null,
+              ]
+                .filter(Boolean)
+                .map((label, i) => (
+                  <span
+                    key={i}
+                    className={cn(
+                      "shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium",
+                      i === 0
+                        ? "bg-primary/10 text-primary"
+                        : "bg-muted text-muted-foreground"
+                    )}
+                  >
+                    {label}
+                  </span>
+                ))}
+            </button>
+            <RefreshControl compact />
+          </div>
+        )}
 
         {/* drill-down filter bar */}
         {(drill.campaigns.length > 0 || drill.groups.length > 0) && (
-          <div className="flex flex-wrap items-center gap-2 border-b bg-primary/5 px-3.5 py-2.5">
-            <span className="text-xs font-bold text-muted-foreground">
-              Фільтр за вибором:
-            </span>
-            {drill.campaigns.length > 0 && (
-              <Badge variant="outline" className="gap-1 bg-card py-1 pr-1">
-                <IconSpeakerphone className="size-3.5" />
-                Кампанії: {drill.campaigns.length}
-                <button
-                  onClick={clearDrill}
-                  className="ml-0.5 grid size-4 place-items-center rounded-full hover:bg-muted"
-                  title="Прибрати"
-                >
-                  <IconX className="size-3" />
-                </button>
-              </Badge>
+          <div
+            className={cn(
+              "flex items-center border-b bg-primary/5",
+              isMobile
+                ? "gap-1.5 px-2.5 py-1.5"
+                : "flex-wrap gap-2 px-3.5 py-2.5"
             )}
-            {drill.groups.length > 0 && (
-              <Badge variant="outline" className="gap-1 bg-card py-1 pr-1">
-                <IconLayoutGrid className="size-3.5" />
-                Групи: {drill.groups.length}
-                <button
-                  onClick={() =>
-                    setDrill((d) => ({ campaigns: d.campaigns, groups: [] }))
-                  }
-                  className="ml-0.5 grid size-4 place-items-center rounded-full hover:bg-muted"
-                  title="Прибрати"
-                >
-                  <IconX className="size-3" />
-                </button>
-              </Badge>
-            )}
-            <span className="text-xs text-muted-foreground">
-              · знайдено {rows.length} {ENTITY_NOUN[entity]}
+          >
+            <span className="shrink-0 text-xs font-bold text-muted-foreground">
+              {isMobile ? "Фільтр:" : "Фільтр за вибором:"}
             </span>
+            {/* on a phone the chips scroll sideways so the bar stays one row —
+                the label and the reset button are the fixed anchors */}
+            <div
+              className={cn(
+                "flex items-center gap-1.5",
+                isMobile ? "min-w-0 flex-1 overflow-x-auto" : "flex-wrap gap-2"
+              )}
+            >
+              {drill.campaigns.length > 0 && (
+                <Badge
+                  variant="outline"
+                  className="shrink-0 gap-1 bg-card py-1 pr-1"
+                >
+                  <IconSpeakerphone className="size-3.5" />
+                  Кампанії: {drill.campaigns.length}
+                  <button
+                    onClick={clearDrill}
+                    className="ml-0.5 grid size-4 place-items-center rounded-full hover:bg-muted"
+                    title="Прибрати"
+                  >
+                    <IconX className="size-3" />
+                  </button>
+                </Badge>
+              )}
+              {drill.groups.length > 0 && (
+                <Badge
+                  variant="outline"
+                  className="shrink-0 gap-1 bg-card py-1 pr-1"
+                >
+                  <IconLayoutGrid className="size-3.5" />
+                  Групи: {drill.groups.length}
+                  <button
+                    onClick={() =>
+                      setDrill((d) => ({ campaigns: d.campaigns, groups: [] }))
+                    }
+                    className="ml-0.5 grid size-4 place-items-center rounded-full hover:bg-muted"
+                    title="Прибрати"
+                  >
+                    <IconX className="size-3" />
+                  </button>
+                </Badge>
+              )}
+              {!isMobile && (
+                <span className="text-xs text-muted-foreground">
+                  · знайдено {rows.length} {ENTITY_NOUN[entity]}
+                </span>
+              )}
+            </div>
             <Button
               variant="ghost"
               size="sm"
-              className="ml-1"
+              className="shrink-0"
               onClick={clearDrill}
             >
               <IconX />
-              Скинути все
+              {isMobile ? "Скинути" : "Скинути все"}
             </Button>
           </div>
         )}
 
-        {/* action toolbar */}
-        <div className="flex flex-wrap items-center gap-2.5 border-b p-3.5">
-          {/* Розбивка — primary mode selector, where the status tabs used to be */}
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              render={
-                <Button variant="outline" size="sm">
-                  <IconArrowsSplit2 />
-                  <span className="text-muted-foreground">Розбивка:</span>
-                  <span className="font-semibold">{breakdown}</span>
-                  <IconChevronDown className="text-muted-foreground" />
-                </Button>
-              }
-            />
-            <DropdownMenuContent align="start">
-              <DropdownMenuLabel className="tracking-wide uppercase">
-                Розбивка
-              </DropdownMenuLabel>
-              <DropdownMenuRadioGroup
-                value={breakdown}
-                onValueChange={switchBreakdown}
-              >
-                {BREAKDOWNS.map((b) => (
-                  <DropdownMenuRadioItem key={b} value={b} closeOnClick>
-                    {b}
-                  </DropdownMenuRadioItem>
-                ))}
-              </DropdownMenuRadioGroup>
-            </DropdownMenuContent>
-          </DropdownMenu>
-
-          {/* expand / collapse all product groups */}
-          {grouped && groupIds.length > 0 && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={toggleAllExpand}
-              title={
-                allExpanded ? "Згорнути всі товари" : "Розгорнути всі товари"
-              }
-            >
-              {allExpanded ? <IconChevronsUp /> : <IconChevronsDown />}
-              {allExpanded ? "Згорнути все" : "Розгорнути все"}
-            </Button>
-          )}
-
-          {selCount > 0 && (
-            <>
-              <Separator orientation="vertical" className="h-6!" />
-              <span className="text-[13px] font-bold text-primary">
-                Обрано: {selCount}
-              </span>
-              {entity === "Кампанії" && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => drillInto("Групи оголошень")}
+        {/* action toolbar — desktop only; the phone equivalent is the search +
+            "Фільтри" row above */}
+        {!isMobile && (
+          <div className="flex flex-wrap items-center gap-2.5 border-b p-3.5">
+            {/* Розбивка — primary mode selector, where the status tabs used to be */}
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={
+                  <Button variant="outline" size="sm">
+                    <IconArrowsSplit2 />
+                    <span className="text-muted-foreground">Розбивка:</span>
+                    <span className="font-semibold">{breakdown}</span>
+                    <IconChevronDown className="text-muted-foreground" />
+                  </Button>
+                }
+              />
+              <DropdownMenuContent align="start">
+                <DropdownMenuLabel className="tracking-wide uppercase">
+                  Розбивка
+                </DropdownMenuLabel>
+                <DropdownMenuRadioGroup
+                  value={breakdown}
+                  onValueChange={switchBreakdown}
                 >
-                  <IconLayoutGrid />
-                  Групи оголошень для {selCount}
-                </Button>
-              )}
-              {entity === "Групи оголошень" && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => drillInto("Оголошення")}
-                >
-                  <IconBox />
-                  Оголошення для {selCount}
-                </Button>
-              )}
+                  {BREAKDOWNS.map((b) => (
+                    <DropdownMenuRadioItem key={b} value={b} closeOnClick>
+                      {b}
+                    </DropdownMenuRadioItem>
+                  ))}
+                </DropdownMenuRadioGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            {/* expand / collapse all product groups */}
+            {grouped && groupIds.length > 0 && (
               <Button
-                variant="ghost"
+                variant="outline"
                 size="sm"
-                onClick={() => setSel(new Set())}
+                onClick={toggleAllExpand}
+                title={
+                  allExpanded ? "Згорнути всі товари" : "Розгорнути всі товари"
+                }
               >
-                <IconX />
-                Зняти
+                {allExpanded ? <IconChevronsUp /> : <IconChevronsDown />}
+                {allExpanded ? "Згорнути все" : "Розгорнути все"}
               </Button>
-            </>
-          )}
+            )}
 
-          {/* search — fills the space between the left actions and the columns menu */}
-          <div className="relative ml-auto min-w-40 flex-1">
-            <IconSearch className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              className="h-8 pl-8.5"
-              placeholder="Пошук за назвою"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-            />
-          </div>
-
-          {/* columns dropdown */}
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              render={
-                <Button variant="outline" size="sm">
-                  <IconColumns />
-                  Стовпці
-                  <IconChevronDown className="text-muted-foreground" />
-                </Button>
-              }
-            />
-            <DropdownMenuContent align="end" className="max-h-[460px] w-64">
-              <DropdownMenuLabel className="tracking-wide uppercase">
-                Набори
-              </DropdownMenuLabel>
-              {Object.keys(PRESETS).map((p) => (
-                <DropdownMenuItem
-                  key={p}
-                  closeOnClick={false}
-                  onClick={() => {
-                    const groups = PRESETS[p]
-                    setVisible(
-                      Object.fromEntries(
-                        allCols.map((c) => [
-                          c.key,
-                          groups ? groups.includes(c.group) : true,
-                        ])
-                      )
-                    )
-                  }}
+            {selCount > 0 && (
+              <>
+                <Separator orientation="vertical" className="h-6!" />
+                <span className="text-[13px] font-bold text-primary">
+                  Обрано: {selCount}
+                </span>
+                {entity === "Кампанії" && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => drillInto("Групи оголошень")}
+                  >
+                    <IconLayoutGrid />
+                    Групи оголошень для {selCount}
+                  </Button>
+                )}
+                {entity === "Групи оголошень" && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => drillInto("Оголошення")}
+                  >
+                    <IconBox />
+                    Оголошення для {selCount}
+                  </Button>
+                )}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setSel(new Set())}
                 >
-                  <IconColumns />
-                  {p}
-                </DropdownMenuItem>
-              ))}
-              <DropdownMenuSeparator />
-              {COL_GROUPS.map((g) => (
-                <div key={g.id}>
-                  <DropdownMenuLabel className="tracking-wide uppercase">
-                    {g.label}
-                  </DropdownMenuLabel>
-                  {allCols
-                    .filter((c) => c.group === g.id)
-                    .map((c) => (
-                      <DropdownMenuCheckboxItem
-                        key={c.key}
-                        checked={!!visible[c.key]}
-                        onCheckedChange={() =>
-                          setVisible((v) => ({ ...v, [c.key]: !v[c.key] }))
-                        }
-                        closeOnClick={false}
-                      >
-                        {c.label}
-                      </DropdownMenuCheckboxItem>
-                    ))}
-                </div>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
+                  <IconX />
+                  Зняти
+                </Button>
+              </>
+            )}
 
-          <Button variant="ghost" size="icon-sm" aria-label="Експорт">
-            <IconDownload />
-          </Button>
-        </div>
+            {/* search — fills the space between the left actions and the columns menu */}
+            <div className="relative ml-auto min-w-40 flex-1">
+              <IconSearch className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                className="h-8 pl-8.5"
+                placeholder="Пошук за назвою"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+              />
+            </div>
+
+            {/* columns dropdown */}
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={
+                  <Button variant="outline" size="sm">
+                    <IconColumns />
+                    Стовпці
+                    <IconChevronDown className="text-muted-foreground" />
+                  </Button>
+                }
+              />
+              <DropdownMenuContent align="end" className="max-h-[460px] w-64">
+                <DropdownMenuLabel className="tracking-wide uppercase">
+                  Набори
+                </DropdownMenuLabel>
+                {Object.keys(PRESETS).map((p) => (
+                  <DropdownMenuItem
+                    key={p}
+                    closeOnClick={false}
+                    onClick={() => {
+                      const groups = PRESETS[p]
+                      setVisible(
+                        Object.fromEntries(
+                          allCols.map((c) => [
+                            c.key,
+                            groups ? groups.includes(c.group) : true,
+                          ])
+                        )
+                      )
+                    }}
+                  >
+                    <IconColumns />
+                    {p}
+                  </DropdownMenuItem>
+                ))}
+                <DropdownMenuSeparator />
+                {COL_GROUPS.map((g) => (
+                  <div key={g.id}>
+                    <DropdownMenuLabel className="tracking-wide uppercase">
+                      {g.label}
+                    </DropdownMenuLabel>
+                    {allCols
+                      .filter((c) => c.group === g.id)
+                      .map((c) => (
+                        <DropdownMenuCheckboxItem
+                          key={c.key}
+                          checked={!!visible[c.key]}
+                          onCheckedChange={() =>
+                            setVisible((v) => ({ ...v, [c.key]: !v[c.key] }))
+                          }
+                          closeOnClick={false}
+                        >
+                          {c.label}
+                        </DropdownMenuCheckboxItem>
+                      ))}
+                  </div>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            <Button variant="ghost" size="icon-sm" aria-label="Експорт">
+              <IconDownload />
+            </Button>
+          </div>
+        )}
 
         {/* heads-up: campaigns that can't be grouped because their name has no
             product id up front */}
@@ -2008,26 +1935,33 @@ export function CampaignsPage() {
         {/* table — the only element that scrolls; header row, totals row and the
             left "identity" columns stay frozen just like in Ads Manager */}
         <Table
-          className="w-auto table-fixed border-separate border-spacing-0 text-[13px]"
+          className={cn(
+            "w-auto table-fixed border-separate border-spacing-0 text-[13px]",
+            // phone density: one step down in type size and a shorter header;
+            // the cell padding comes from cellPad / nameXPad / rowYPad below
+            isMobile && "text-[11px] [&_th]:h-9"
+          )}
           containerClassName="table-scroll min-h-0 flex-1 overflow-auto overscroll-none"
         >
           <TableHeader>
             <TableRow className="hover:bg-transparent">
-              <TableHead
-                className={cn(
-                  "sticky top-0 left-0 z-40 border-b px-0 text-center",
-                  HEADER_BG
-                )}
-                style={{ width: W_SELECT, minWidth: W_SELECT }}
-              >
-                <div className="flex justify-center">
-                  <Checkbox
-                    checked={allSel}
-                    onCheckedChange={toggleAll}
-                    aria-label="Обрати всі"
-                  />
-                </div>
-              </TableHead>
+              {showSelectCol && (
+                <TableHead
+                  className={cn(
+                    "sticky top-0 left-0 z-40 border-b px-0 text-center",
+                    HEADER_BG
+                  )}
+                  style={{ width: W_SELECT, minWidth: W_SELECT }}
+                >
+                  <div className="flex justify-center">
+                    <Checkbox
+                      checked={allSel}
+                      onCheckedChange={toggleAll}
+                      aria-label="Обрати всі"
+                    />
+                  </div>
+                </TableHead>
+              )}
               {showToggleCol && (
                 <TableHead
                   className={cn(
@@ -2037,7 +1971,7 @@ export function CampaignsPage() {
                   style={{
                     width: W_TOGGLE,
                     minWidth: W_TOGGLE,
-                    left: W_SELECT,
+                    left: toggleLeft,
                   }}
                   onClick={() => toggleSort("active")}
                 >
@@ -2051,13 +1985,14 @@ export function CampaignsPage() {
               )}
               <TableHead
                 className={cn(
-                  "sticky top-0 z-40 cursor-pointer overflow-hidden border-b pl-3",
+                  "sticky top-0 z-40 cursor-pointer overflow-hidden border-b",
+                  nameXPad,
                   FROZEN_EDGE,
                   HEADER_BG
                 )}
                 style={{
-                  width: colWidths.name,
-                  minWidth: colWidths.name,
+                  width: nameW,
+                  minWidth: nameW,
                   left: nameLeft,
                 }}
                 onClick={() => toggleSort("name")}
@@ -2070,18 +2005,21 @@ export function CampaignsPage() {
                     state={sort.key === "name" ? sort.dir : null}
                   />
                 </span>
-                <ResizeHandle onStart={(e) => startResize("name", e)} />
+                {!isMobile && (
+                  <ResizeHandle onStart={(e) => startResize("name", e)} />
+                )}
               </TableHead>
               {cols.map((c) => (
                 <TableHead
                   key={c.key}
                   className={cn(
-                    "sticky top-0 z-20 cursor-pointer overflow-hidden border-b px-3 text-left",
+                    "sticky top-0 z-20 cursor-pointer overflow-hidden border-b text-left",
+                    cellPad,
                     c.emphasize ? HEADER_EMPH : HEADER_BG
                   )}
                   style={{
-                    width: colWidths[c.key],
-                    minWidth: colWidths[c.key],
+                    width: colW(c),
+                    minWidth: colW(c),
                   }}
                   title={c.hint}
                   onClick={() => toggleSort(c.key)}
@@ -2092,7 +2030,9 @@ export function CampaignsPage() {
                       state={sort.key === c.key ? sort.dir : null}
                     />
                   </span>
-                  <ResizeHandle onStart={(e) => startResize(c.key, e)} />
+                  {!isMobile && (
+                    <ResizeHandle onStart={(e) => startResize(c.key, e)} />
+                  )}
                 </TableHead>
               ))}
             </TableRow>
@@ -2166,32 +2106,35 @@ export function CampaignsPage() {
 
           <TableFooter className="border-0 bg-transparent">
             <TableRow className="hover:bg-transparent">
-              <TableCell
-                className={cn(
-                  "sticky bottom-0 left-0 z-30 border-t",
-                  FOOTER_BG
-                )}
-                style={{ width: W_SELECT, minWidth: W_SELECT }}
-              />
+              {showSelectCol && (
+                <TableCell
+                  className={cn(
+                    "sticky bottom-0 left-0 z-30 border-t",
+                    FOOTER_BG
+                  )}
+                  style={{ width: W_SELECT, minWidth: W_SELECT }}
+                />
+              )}
               {showToggleCol && (
                 <TableCell
                   className={cn("sticky bottom-0 z-30 border-t", FOOTER_BG)}
                   style={{
                     width: W_TOGGLE,
                     minWidth: W_TOGGLE,
-                    left: W_SELECT,
+                    left: toggleLeft,
                   }}
                 />
               )}
               <TableCell
                 className={cn(
-                  "sticky bottom-0 z-30 overflow-hidden border-t pl-3 font-bold",
+                  "sticky bottom-0 z-30 overflow-hidden border-t font-bold",
+                  nameXPad,
                   FROZEN_EDGE,
                   FOOTER_BG
                 )}
                 style={{
-                  width: colWidths.name,
-                  minWidth: colWidths.name,
+                  width: nameW,
+                  minWidth: nameW,
                   left: nameLeft,
                 }}
               >
@@ -2204,7 +2147,8 @@ export function CampaignsPage() {
                 <TableCell
                   key={col.key}
                   className={cn(
-                    "sticky bottom-0 z-10 overflow-hidden border-t px-3 text-left tabular-nums",
+                    "sticky bottom-0 z-10 overflow-hidden border-t text-left tabular-nums",
+                    cellPad,
                     col.emphasize ? HEADER_EMPH : FOOTER_BG
                   )}
                 >
@@ -2223,58 +2167,116 @@ export function CampaignsPage() {
           </TableFooter>
         </Table>
       </Card>
+
+      {/* every filter the desktop toolbars carry, in one bottom sheet */}
+      {isMobile && (
+        <CampaignFiltersSheet
+          open={filtersOpen}
+          onOpenChange={setFiltersOpen}
+          dateRange={dateRange}
+          onDateRange={setDateRange}
+          breakdown={breakdown}
+          breakdowns={BREAKDOWNS}
+          onBreakdown={switchBreakdown}
+          platforms={platforms}
+          onTogglePlatform={togglePlatform}
+          onAllPlatforms={selectAllPlatforms}
+          scopedAccounts={scopedAccounts}
+          adAccounts={adAccounts}
+          onToggleAdAccount={toggleAdAccount}
+          onAllAdAccounts={selectAllAdAccounts}
+          currency={currency}
+          onCurrency={setCurrency}
+          visible={visible}
+          onToggleColumn={(key) =>
+            setVisible((v) => ({ ...v, [key]: !v[key] }))
+          }
+          onColumnPreset={applyColumnPreset}
+          onReset={resetFilters}
+        />
+      )}
     </div>
   )
 }
 
 // full-page skeleton for the first load — mirrors the toolbar + table layout
 function CampaignsSkeleton({ cols }: { cols: number }) {
-  const metricCols = Math.min(cols, 7)
+  const isMobile = useIsMobile()
+  const metricCols = Math.min(cols, isMobile ? 2 : 7)
   return (
-    <div className="flex h-[calc(100svh-58px)] w-full min-w-0 flex-col gap-4 overflow-hidden p-4 md:p-6">
+    <div className="flex h-[calc(100svh-58px)] w-full min-w-0 flex-col gap-2.5 overflow-hidden p-2.5 sm:gap-4 sm:p-4 md:p-6">
       {/* sync strip — stands in for the page title */}
-      <div className="flex shrink-0 items-center gap-3 rounded-xl bg-card px-3.5 py-2.5 shadow-xs">
+      <div className="flex shrink-0 items-center gap-3 rounded-xl bg-card px-3 py-2 shadow-xs sm:px-3.5 sm:py-2.5">
         <Skeleton className="size-6 shrink-0 rounded-md" />
         <Skeleton className="h-4 w-60 max-w-[45%]" />
         <Skeleton className="ml-auto h-4 w-28" />
       </div>
 
       <Card className="flex min-h-0 flex-1 flex-col gap-0 overflow-hidden py-0">
-        {/* data-source bar */}
-        <div className="flex flex-wrap items-center gap-2 border-b p-3.5">
-          <Skeleton className="h-8 w-36" />
-          <Skeleton className="h-8 w-40" />
-          <Skeleton className="h-8 w-44" />
-          <Skeleton className="ml-auto h-8 w-28" />
-          <Skeleton className="size-8" />
-        </div>
-        {/* entity tabs */}
-        <div className="flex items-center gap-5 border-b px-3.5 py-3">
-          {Array.from({ length: 3 }, (_, i) => (
-            <Skeleton key={i} className="h-6 w-32" />
-          ))}
-          <Skeleton className="ml-auto h-8 w-32" />
-        </div>
-        {/* action toolbar */}
-        <div className="flex items-center gap-2.5 border-b p-3.5">
-          <Skeleton className="h-8 w-44" />
-          <Skeleton className="h-8 w-36" />
-          <Skeleton className="ml-auto h-8 flex-1" />
-          <Skeleton className="h-8 w-24" />
-          <Skeleton className="size-8" />
-        </div>
+        {isMobile ? (
+          <>
+            {/* search + "Фільтри" */}
+            <div className="flex items-center gap-2 border-b p-2.5">
+              <Skeleton className="h-9 flex-1" />
+              <Skeleton className="h-9 w-24 shrink-0" />
+            </div>
+            {/* entity tabs */}
+            <div className="flex items-center gap-3 border-b px-2.5 py-2.5">
+              {Array.from({ length: 3 }, (_, i) => (
+                <Skeleton key={i} className="h-5 w-20 shrink-0" />
+              ))}
+            </div>
+            {/* applied-filter chips */}
+            <div className="flex items-center gap-1.5 border-b px-2.5 py-2">
+              <Skeleton className="h-4 w-24 shrink-0 rounded-full" />
+              <Skeleton className="h-4 w-20 shrink-0 rounded-full" />
+            </div>
+          </>
+        ) : (
+          <>
+            {/* data-source bar */}
+            <div className="flex flex-wrap items-center gap-2 border-b p-3.5">
+              <Skeleton className="h-8 w-36" />
+              <Skeleton className="h-8 w-40" />
+              <Skeleton className="h-8 w-44" />
+              <Skeleton className="ml-auto h-8 w-28" />
+              <Skeleton className="size-8" />
+            </div>
+            {/* entity tabs */}
+            <div className="flex items-center gap-5 border-b px-3.5 py-3">
+              {Array.from({ length: 3 }, (_, i) => (
+                <Skeleton key={i} className="h-6 w-32" />
+              ))}
+              <Skeleton className="ml-auto h-8 w-32" />
+            </div>
+            {/* action toolbar */}
+            <div className="flex items-center gap-2.5 border-b p-3.5">
+              <Skeleton className="h-8 w-44" />
+              <Skeleton className="h-8 w-36" />
+              <Skeleton className="ml-auto h-8 flex-1" />
+              <Skeleton className="h-8 w-24" />
+              <Skeleton className="size-8" />
+            </div>
+          </>
+        )}
         {/* table */}
-        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden p-3.5">
+        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden p-2.5 sm:p-3.5">
           {Array.from({ length: 9 }, (_, i) => (
-            <div key={i} className="flex items-center gap-3">
-              <Skeleton className="size-[18px] shrink-0 rounded-[5px]" />
+            <div key={i} className="flex items-center gap-2 sm:gap-3">
+              {!isMobile && (
+                <Skeleton className="size-[18px] shrink-0 rounded-[5px]" />
+              )}
               <Skeleton className="h-5 w-8 shrink-0 rounded-full" />
               <Skeleton className="size-6 shrink-0 rounded-md" />
               <Skeleton
                 className="h-4 shrink-0"
-                style={{ width: 130 + ((i * 41) % 110) }}
+                style={{
+                  width: isMobile
+                    ? 70 + ((i * 41) % 50)
+                    : 130 + ((i * 41) % 110),
+                }}
               />
-              <div className="ml-auto flex items-center gap-5">
+              <div className="ml-auto flex items-center gap-3 sm:gap-5">
                 {Array.from({ length: metricCols }, (_, j) => (
                   <Skeleton
                     key={j}
@@ -2305,6 +2307,11 @@ function SortIndicator({ state }: { state: "asc" | "desc" | null }) {
 const COL_WIDTHS_KEY = "campaigns.colWidths.v1"
 function defaultColWidth(label: string) {
   return Math.round(Math.min(180, Math.max(100, label.length * 7.5 + 34)))
+}
+// Phone widths: the same shape, scaled to the 11px type — about 2.5 metric
+// columns fit next to the frozen name column on a 390px screen.
+function mobileColWidth(label: string) {
+  return Math.round(Math.min(116, Math.max(76, label.length * 5.5 + 22)))
 }
 
 // drag handle on a column's right edge; sits over the header cell's border
