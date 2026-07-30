@@ -258,13 +258,19 @@ function plural(n: number, one: string, few: string, many: string) {
   return many
 }
 
-// amber warning shown next to campaigns with no product id in the name
-function NoProductWarning() {
+// amber warning shown next to campaigns with no product id in the name; the
+// compact variant sits on the row subline, where the phone puts it instead
+function NoProductWarning({ compact = false }: { compact?: boolean }) {
   return (
     <Tooltip>
       <TooltipTrigger
         render={
-          <Badge className="shrink-0 gap-1 border-transparent bg-amber-500/15 text-amber-700 dark:bg-amber-400/15 dark:text-amber-400">
+          <Badge
+            className={cn(
+              "shrink-0 gap-1 border-transparent bg-amber-500/15 text-amber-700 dark:bg-amber-400/15 dark:text-amber-400",
+              compact && "h-4 px-1.5 text-[10px]"
+            )}
+          >
             <IconAlertTriangle className="size-3" />
             Без ID товару
           </Badge>
@@ -1065,10 +1071,15 @@ export function CampaignsPage() {
                     <IconChevronDown className="size-3.5 shrink-0 -rotate-90 opacity-55" />
                   </button>
                 )}
-                {opts.warn && <NoProductWarning />}
+                {/* on a phone the badge would eat the whole 158px name column,
+                    so there it moves down to the subline instead */}
+                {opts.warn && !isMobile && <NoProductWarning />}
               </div>
               <div className="flex min-w-0 items-center gap-1.5 text-[11px] text-muted-foreground">
-                {c._breakdown ? (
+                {opts.warn && isMobile ? (
+                  // the warning is worth more than the row number here
+                  <NoProductWarning compact />
+                ) : c._breakdown ? (
                   <span className="flex min-w-0 items-center gap-1.5">
                     <PlatformBadge id={c.platform} size={12} />
                     <span className="truncate">{c.name}</span>
