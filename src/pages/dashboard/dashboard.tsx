@@ -18,7 +18,7 @@ import {
   IconX,
   type Icon,
 } from "@tabler/icons-react"
-import { useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { Bar, BarChart, LabelList, XAxis, YAxis } from "recharts"
 
@@ -67,6 +67,10 @@ import {
 import { PLAN_FEATURES, PricingGrid } from "@/features/billing/plans"
 import { cn } from "@/lib/utils"
 import { ONBOARDING_STEPS } from "@/pages/onboarding/onboarding"
+import {
+  DashboardSkeleton,
+  DashboardWidgetsSkeleton,
+} from "./dashboard-skeleton"
 import {
   avatarColor,
   BUYERS,
@@ -233,7 +237,7 @@ function LockedOverlay({
 
 const DATE_PRESETS = ["Сьогодні", "7 днів", "30 днів", "Цей місяць"]
 
-function DateRangePicker() {
+function DateRangePicker({ onChange }: { onChange?: () => void }) {
   const [dateRange, setDateRange] = useState(DATE_PRESETS[0])
 
   return (
@@ -248,7 +252,14 @@ function DateRangePicker() {
         }
       />
       <DropdownMenuContent align="end">
-        <DropdownMenuRadioGroup value={dateRange} onValueChange={setDateRange}>
+        <DropdownMenuRadioGroup
+          value={dateRange}
+          onValueChange={(value) => {
+            if (value === dateRange) return
+            setDateRange(value)
+            onChange?.()
+          }}
+        >
           {DATE_PRESETS.map((p) => (
             <DropdownMenuRadioItem key={p} value={p} closeOnClick>
               {p}
@@ -1016,7 +1027,30 @@ function TopProducts() {
 
 export function DashboardPage() {
   const [showOnboarding, setShowOnboarding] = useState(true)
-  const { noPlan } = useDataSources()
+  const { noPlan, loading } = useDataSources()
+
+  // loading skeletons: a full-page one on first load, and a short pulse over
+  // the data widgets whenever the date range changes so the switch feels "live".
+  // `loading` is the demo switch in the header — it pins the full-page state.
+  const [firstLoad, setFirstLoad] = useState(true)
+  const [reloading, setReloading] = useState(false)
+  const pulseRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    const t = window.setTimeout(() => setFirstLoad(false), 750)
+    return () => {
+      window.clearTimeout(t)
+      if (pulseRef.current) window.clearTimeout(pulseRef.current)
+    }
+  }, [])
+
+  function pulse(ms = 500) {
+    setReloading(true)
+    if (pulseRef.current) window.clearTimeout(pulseRef.current)
+    pulseRef.current = window.setTimeout(() => setReloading(false), ms)
+  }
+
+  if (firstLoad || loading) return <DashboardSkeleton />
 
   return (
     <div className="mx-auto flex w-full max-w-[1340px] flex-col gap-4 p-4 md:p-6">
@@ -1029,17 +1063,23 @@ export function DashboardPage() {
       )}
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-bold tracking-tight">Огляд</h1>
-        <DateRangePicker />
+        <DateRangePicker onChange={() => pulse()} />
       </div>
-      <KpiCards />
-      <div className="grid gap-4 lg:grid-cols-[1.7fr_1fr]">
-        <LeadsChart />
-        <TopBuyers />
-      </div>
-      <div className="grid gap-4 lg:grid-cols-[1fr_1.4fr]">
-        <TopCallCenters />
-        <TopProducts />
-      </div>
+      {reloading ? (
+        <DashboardWidgetsSkeleton />
+      ) : (
+        <>
+          <KpiCards />
+          <div className="grid gap-4 lg:grid-cols-[1.7fr_1fr]">
+            <LeadsChart />
+            <TopBuyers />
+          </div>
+          <div className="grid gap-4 lg:grid-cols-[1fr_1.4fr]">
+            <TopCallCenters />
+            <TopProducts />
+          </div>
+        </>
+      )}
     </div>
   )
 }

@@ -58,7 +58,14 @@ const DATA_SOURCE_OPTIONS: { value: DataSource; label: string }[] = [
 ]
 
 function DataSourcesMenu() {
-  const { sources, toggleSource, noPlan, toggleNoPlan } = useDataSources()
+  const {
+    sources,
+    toggleSource,
+    noPlan,
+    toggleNoPlan,
+    loading,
+    toggleLoading,
+  } = useDataSources()
   const navigate = useNavigate()
 
   return (
@@ -93,6 +100,13 @@ function DataSourcesMenu() {
             closeOnClick={false}
           >
             Без тарифа
+          </DropdownMenuCheckboxItem>
+          <DropdownMenuCheckboxItem
+            checked={loading}
+            onCheckedChange={toggleLoading}
+            closeOnClick={false}
+          >
+            Завантаження
           </DropdownMenuCheckboxItem>
           <DropdownMenuSeparator />
           <DropdownMenuLabel>Сторінка підключення (демо)</DropdownMenuLabel>
