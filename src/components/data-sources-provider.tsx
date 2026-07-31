@@ -10,10 +10,15 @@ type DataSourcesContextValue = {
   toggleSource: (source: DataSource) => void
   noPlan: boolean
   toggleNoPlan: () => void
+  // demo-only: pins the dashboard in its loading state so the skeleton can be
+  // reviewed without racing the mock timers
+  loading: boolean
+  toggleLoading: () => void
 }
 
 const STORAGE_KEY = "data-sources"
 const NO_PLAN_KEY = "data-sources-no-plan"
+const LOADING_KEY = "data-sources-loading"
 
 // New users start with nothing connected.
 const DEFAULT_STATE: DataSourcesState = {
@@ -38,9 +43,9 @@ function readStoredState(): DataSourcesState {
   }
 }
 
-function readStoredNoPlan(): boolean {
+function readStoredFlag(key: string): boolean {
   try {
-    return localStorage.getItem(NO_PLAN_KEY) === "true"
+    return localStorage.getItem(key) === "true"
   } catch {
     return false
   }
@@ -54,7 +59,12 @@ export function DataSourcesProvider({
   const [sources, setSources] = React.useState<DataSourcesState>(() =>
     readStoredState()
   )
-  const [noPlan, setNoPlan] = React.useState<boolean>(() => readStoredNoPlan())
+  const [noPlan, setNoPlan] = React.useState<boolean>(() =>
+    readStoredFlag(NO_PLAN_KEY)
+  )
+  const [loading, setLoading] = React.useState<boolean>(() =>
+    readStoredFlag(LOADING_KEY)
+  )
 
   const toggleSource = React.useCallback((source: DataSource) => {
     setSources((prev) => {
@@ -72,9 +82,24 @@ export function DataSourcesProvider({
     })
   }, [])
 
+  const toggleLoading = React.useCallback(() => {
+    setLoading((prev) => {
+      const next = !prev
+      localStorage.setItem(LOADING_KEY, String(next))
+      return next
+    })
+  }, [])
+
   const value = React.useMemo(
-    () => ({ sources, toggleSource, noPlan, toggleNoPlan }),
-    [sources, toggleSource, noPlan, toggleNoPlan]
+    () => ({
+      sources,
+      toggleSource,
+      noPlan,
+      toggleNoPlan,
+      loading,
+      toggleLoading,
+    }),
+    [sources, toggleSource, noPlan, toggleNoPlan, loading, toggleLoading]
   )
 
   return (
