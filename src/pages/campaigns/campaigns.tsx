@@ -327,8 +327,8 @@ function NoPlanOverlay({ onPick }: { onPick: () => void }) {
   return (
     <div className="absolute inset-0 z-50 flex items-center justify-center bg-white/60 p-4 dark:bg-black/60">
       <div className="flex flex-col items-center justify-center gap-3 px-6 py-10 text-center">
-        <div className="flex size-11 items-center justify-center rounded-full bg-muted">
-          <IconCrown className="size-5 text-destructive" />
+        <div className="flex size-11 items-center justify-center rounded-full bg-destructive/10">
+          <IconLock className="size-5 text-destructive" />
         </div>
         <div>
           <p className="text-sm font-semibold">Немає активного тарифу</p>

@@ -142,6 +142,7 @@ function NotConnectedState({
   actionLabel = "Підключити",
   actionIcon: ActionIcon = IconArrowRight,
   onAction,
+  alert = false,
 }: {
   icon: Icon
   title: string
@@ -150,6 +151,10 @@ function NotConnectedState({
   actionLabel?: string
   actionIcon?: Icon
   onAction?: () => void
+  // a missing plan is a harder stop than a missing connection — it dresses the
+  // icon disc exactly like the padlock chip on the "no active plan" strips:
+  // soft destructive wash behind a destructive glyph
+  alert?: boolean
 }) {
   return (
     <div
@@ -158,8 +163,18 @@ function NotConnectedState({
         className
       )}
     >
-      <div className="flex size-11 items-center justify-center rounded-full bg-muted">
-        <SourceIcon className="size-5 text-muted-foreground" />
+      <div
+        className={cn(
+          "flex size-11 items-center justify-center rounded-full",
+          alert ? "bg-destructive/10" : "bg-muted"
+        )}
+      >
+        <SourceIcon
+          className={cn(
+            "size-5",
+            alert ? "text-destructive" : "text-muted-foreground"
+          )}
+        />
       </div>
       <div>
         <p className="text-sm font-semibold">{title}</p>
@@ -206,12 +221,13 @@ function LockedOverlay({
       <div className="absolute inset-0 flex items-center justify-center bg-white/60 p-4 dark:bg-black/60">
         {noPlan ? (
           <NotConnectedState
-            icon={IconCrown}
+            icon={IconLock}
             title="Немає активного тарифу"
             description="Підключіть тариф, щоб бачити дані аналітики"
             actionLabel="Підключіть тариф"
             actionIcon={IconCrown}
             onAction={openPricing}
+            alert
           />
         ) : (
           <NotConnectedState
