@@ -2001,8 +2001,10 @@ export function CampaignsPage() {
         )}
 
         {/* heads-up: campaigns that can't be grouped because their name has no
-            product id up front */}
-        {grouped && entity === "Кампанії" && orphanCount > 0 && (
+            product id up front. Without a plan the table behind it is held back
+            anyway, so the warning has nothing to point at — the "no active plan"
+            strip is the only notice that state should carry. */}
+        {!noPlan && grouped && entity === "Кампанії" && orphanCount > 0 && (
           <div className="flex items-start gap-2 border-b bg-amber-500/[0.07] px-3.5 py-2 text-xs text-amber-700 dark:bg-amber-400/[0.07] dark:text-amber-400">
             <IconAlertTriangle className="mt-0.5 size-4 shrink-0" />
             <span className="min-w-0">
