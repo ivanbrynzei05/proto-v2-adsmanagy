@@ -43,7 +43,9 @@ function TooltipContent({
         alignOffset={alignOffset}
         side={side}
         sideOffset={sideOffset}
-        className="isolate z-50"
+        // Above dialogs (z-60), same as the combobox positioner - a hint opened
+        // from inside a dialog has to float over it, not behind it.
+        className="isolate z-[70]"
       >
         <TooltipPrimitive.Popup
           data-slot="tooltip-content"

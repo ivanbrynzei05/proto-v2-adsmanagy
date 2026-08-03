@@ -105,38 +105,40 @@ export type CrmStatusCategoryKey =
   | "returned"
   | "shipped"
 
+// Three levels, and only three: an account's hundred-odd statuses all boil down
+// to "confirmed", "paid for" or "lost". `dot` colours the bucket marker, `tint`
+// paints the status itself once it lands here, and `hint` is the "which statuses
+// go here?" help next to the label.
 export const CRM_STATUS_CATEGORIES: {
   key: CrmStatusCategoryKey
   label: string
   hint: string
   dot: string
+  tint: string
   required?: boolean
 }[] = [
   {
     key: "approved",
-    label: "Підтвердженні замовлення",
-    hint: "Підтверджені замовлення (апрув)",
+    label: "Підтверджені замовлення",
+    hint: "Статуси, у яких клієнт підтвердив замовлення і воно пішло в роботу — від апруву до пакування та відправки. З них рахується апрув.",
     dot: "bg-emerald-500",
+    tint: "border-emerald-500/30 bg-emerald-500/12 text-emerald-700 dark:text-emerald-400",
     required: true,
   },
   {
     key: "completed",
     label: "Завершені замовлення",
-    hint: "Отримані та оплачені - це дохід",
+    hint: "Статуси, у яких клієнт забрав замовлення і гроші отримані. Саме з них рахується дохід і ROI, тому не змішуйте їх з відправленими.",
     dot: "bg-lime-500",
+    tint: "border-lime-500/30 bg-lime-500/15 text-lime-700 dark:text-lime-400",
     required: true,
   },
   {
     key: "rejected",
     label: "Відмови",
-    hint: "Скасовані або непідтверджені",
+    hint: "Статуси, у яких замовлення не відбулося: клієнт відмовився, не вийшло додзвонитися, лід неякісний або дубль. Вони знижують апрув.",
     dot: "bg-rose-500",
-  },
-  {
-    key: "new",
-    label: "Замовлення в обробці",
-    hint: "Щойно створені, ще в обробці",
-    dot: "bg-violet-500",
+    tint: "border-rose-500/30 bg-rose-500/12 text-rose-700 dark:text-rose-400",
   },
 ]
 
@@ -150,23 +152,43 @@ export type CrmStatusMapping = Record<string, CrmStatusBucket>
 export type ConnectedCrm = {
   type: CrmType
   label: string
+  // Kept so the connection can be reopened for editing with its fields filled in.
+  apiKey?: string
   statuses?: CrmStatusOption[]
   statusMapping?: CrmStatusMapping
 }
 
 // Keyword heuristics behind the "auto-match" button. Order matters: the first
-// rule whose pattern hits the status name wins, so the more specific buckets
-// (returned) come before the looser ones (rejected).
-const AUTO_MATCH_RULES: { key: CrmStatusCategoryKey; pattern: RegExp }[] = [
-  { key: "returned", pattern: /поверн|return|refund/i },
-  { key: "rejected", pattern: /відмов|скасов|відхил|cancel|reject|decline/i },
-  { key: "approved", pattern: /прийн|підтвер|апрув|approve|confirm/i },
+// rule whose pattern hits the status name wins, so ambiguous names are claimed
+// by the most specific rule. A `null` key means "we recognise this family but
+// deliberately don't guess" - it keeps a later, looser rule from grabbing it.
+const AUTO_MATCH_RULES: {
+  key: CrmStatusCategoryKey | null
+  pattern: RegExp
+}[] = [
+  // Returns and swaps have no bucket of their own yet, so the user decides.
+  // Listed first so "Повернення (завершено)" isn't read as a completed order.
+  { key: null, pattern: /поверн|возврат|утиліз|дорозі додому|обмін/i },
+  // Paperwork steps say nothing about the order itself. Before the "approved"
+  // rule so "Друк ТТН" doesn't get pulled in by its ТТН keyword.
+  { key: null, pattern: /чек|друк|принт/i },
+  // Lost leads. Before the call-attempt rules so "Тотальний недозвон" isn't
+  // read as just another dial attempt.
+  {
+    key: "rejected",
+    pattern:
+      /відмов|скасов|відхил|отказ|нелид|нелід|дубл|тотальн|нет товара|немає товару|поганий рейтинг|cancel|reject|decline/i,
+  },
   {
     key: "completed",
-    pattern: /заверш|викуп|выкуп|отрим|оплач|complete|done|paid|delivered/i,
+    pattern: /заверш|виплач|викуп|выкуп|отримано|оплач|complete|done|paid/i,
   },
-  { key: "shipped", pattern: /відправ|відвантаж|доставк|ship|sent/i },
-  { key: "new", pattern: /нов|new|створ|оброб/i },
+  // Confirmed, plus everything already moving through fulfilment.
+  {
+    key: "approved",
+    pattern:
+      /апрув|прийня|підтвер|approve|confirm|упаковк|запаков|ттн|по[шч]т|відправлен|отправлен|передано|самовив/i,
+  },
 ]
 
 // Best-guess bucket for a CRM status name, or null when nothing is confident.
@@ -177,15 +199,87 @@ export function autoMatchStatus(name: string): CrmStatusCategoryKey | null {
   return null
 }
 
-// Mock of the status list a CRM returns once credentials check out.
+// Mock of the status list a CRM returns once credentials check out. Real
+// accounts run to a hundred-odd statuses, so the mock is a full one - the
+// mapping UI has to stay usable at that size.
 export const MOCK_CRM_STATUSES: CrmStatusOption[] = [
   { id: "3", name: "Новий" },
+  { id: "52", name: "Ночь/Вайбер" },
+  { id: "53", name: "НЕДОЗВОН 1Д" },
+  { id: "96", name: "НЕДОЗВОН 2Д" },
+  { id: "92", name: "АПРУВ поганий звязок" },
+  { id: "54", name: "Прозвон(Дожим)" },
+  { id: "74", name: "Упаковка" },
+  { id: "88", name: "Запаковано (На відправку)" },
+  { id: "118", name: "СТВОРИТИ ТТН" },
   { id: "11", name: "Прийнято" },
-  { id: "14", name: "Відправлено" },
+  { id: "80", name: "Передано пошті" },
+  { id: "98", name: "Відправити пізніше" },
+  { id: "56", name: "Перезвон" },
+  { id: "13", name: "Отказ" },
+  { id: "57", name: "Перезвон(Сегодня)" },
+  { id: "95", name: "Перезвон (по дате)" },
+  { id: "60", name: "Тотальний недозвон" },
+  { id: "59", name: "Нелид" },
+  { id: "97", name: "Дубль" },
+  { id: "93", name: "Поганий рейтинг" },
+  { id: "76", name: "НЗВ ВАЙБЕР" },
+  { id: "62", name: "Нет товара" },
+  { id: "55", name: "Китай" },
+  { id: "75", name: "Очікування товару" },
+  { id: "83", name: "УП дзвонимо" },
+  { id: "72", name: "УКР ПОЧТА" },
+  { id: "81", name: "УП 4Д" },
+  { id: "82", name: "УП 6Д" },
+  { id: "14", name: "Отправлен" },
+  { id: "73", name: "ПЕРЕАДРЕСОВАТЬ(КЦ)" },
+  { id: "63", name: "1Д-ОТД" },
+  { id: "64", name: "2Д-ОТД" },
+  { id: "65", name: "3Д-ОТД" },
+  { id: "66", name: "4Д-ОТД" },
+  { id: "67", name: "5Д-ОТД" },
+  { id: "68", name: "6Д-ОТД" },
+  { id: "69", name: "7Д-ОТД" },
+  { id: "91", name: "НП без вайберу" },
+  { id: "71", name: "На возврат" },
+  { id: "70", name: "УЖЕ ЗБР(СО СЛОВ КЛИЕНТА)" },
+  { id: "20", name: "Повернення товару (в дорозі)" },
+  { id: "31", name: "Повернення (завершено)" },
   { id: "18", name: "Завершено" },
-  { id: "13", name: "Відмовлено" },
-  { id: "32", name: "Обмін" },
+  { id: "94", name: "Завершено (виплачено)" },
+  { id: "50", name: "Утилізація" },
   { id: "27", name: "Самовивіз" },
+  { id: "32", name: "Обмін" },
+  { id: "51", name: "В дорозі додому (гроші)" },
+  { id: "77", name: "ТурбоСМС" },
+  { id: "61", name: "ТУРБО СМС-ПРОЗВОН" },
+  { id: "78", name: "ТурбоСМС - НО" },
+  { id: "79", name: "ТурбоСМС-уточнение" },
+  { id: "90", name: "Турбо СМС-Предоплата" },
+  { id: "84", name: "ВАЙБЕР НЕЛИД" },
+  { id: "85", name: "ВАЙБЕР ОТКАЗ" },
+  { id: "86", name: "Чеки" },
+  { id: "89", name: "Не друкується" },
+  { id: "87", name: "Друк ТТН" },
+  { id: "99", name: "Дозвон 1" },
+  { id: "100", name: "Дозвон 2" },
+  { id: "101", name: "Дозвон 3" },
+  { id: "102", name: "Дозвон 4" },
+  { id: "103", name: "Дозвон 5" },
+  { id: "104", name: "Дозвон 6" },
+  { id: "105", name: "Дозвон 7" },
+  { id: "106", name: "Дозвон 8" },
+  { id: "107", name: "Дозвон 9" },
+  { id: "108", name: "Дозвон 10" },
+  { id: "109", name: "Дозвон 11" },
+  { id: "110", name: "Предоплата" },
+  { id: "111", name: "ПРОЗВОН ДОЖИМУ" },
+  { id: "112", name: "ПРОЗВОН ДОЖИМУ 2" },
+  { id: "113", name: "ПРОЗВОН ДОЖИМУ 3" },
+  { id: "114", name: "СМС ВАЙБЕР+" },
+  { id: "115", name: "ДЛЯ ОТП ВАЙБЕР" },
+  { id: "116", name: "ОФОРМЛЕННЯ ВАЙБЕР" },
+  { id: "117", name: "НЗВ х3 ВАЙБЕР" },
 ]
 
 export const CRM_LOGO_COLORS: Record<CrmType, string> = {

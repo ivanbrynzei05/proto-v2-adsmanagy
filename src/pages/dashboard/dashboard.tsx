@@ -42,13 +42,6 @@ import {
   type ChartConfig,
 } from "@/components/ui/chart"
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
-import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuRadioGroup,
@@ -64,7 +57,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { PLAN_FEATURES, PricingGrid } from "@/features/billing/plans"
+import { PLAN_FEATURES } from "@/features/billing/plans"
+import { PricingDialog } from "@/features/billing/pricing-dialog"
 import { cn } from "@/lib/utils"
 import { ONBOARDING_STEPS } from "@/pages/onboarding/onboarding"
 import {
@@ -643,34 +637,6 @@ function LeadsChart() {
         </ChartContainer>
       </CardContent>
     </Card>
-  )
-}
-
-function PricingDialog({
-  open,
-  onOpenChange,
-}: {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-}) {
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-5xl">
-        <DialogHeader>
-          <DialogTitle>Оберіть тариф</DialogTitle>
-          <DialogDescription>
-            Більше акаунтів, учасників команди та інтеграцій на платних тарифах
-          </DialogDescription>
-        </DialogHeader>
-        <PricingGrid
-          size="sm"
-          onSelect={(planId) => {
-            // Close the dialog so the checkout panel opens cleanly on top.
-            if (planId !== "free") onOpenChange(false)
-          }}
-        />
-      </DialogContent>
-    </Dialog>
   )
 }
 

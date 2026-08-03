@@ -12,10 +12,12 @@ import {
   IconClock,
   IconCoin,
   IconColumns,
+  IconCrown,
   IconDownload,
   IconFilter,
   IconHelpCircle,
   IconLayoutGrid,
+  IconLock,
   IconPackage,
   IconPlugConnectedX,
   IconRefresh,
@@ -29,6 +31,7 @@ import {
 } from "@tabler/icons-react"
 import { Fragment, useEffect, useMemo, useRef, useState } from "react"
 
+import { useDataSources } from "@/components/data-sources-provider"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
@@ -62,6 +65,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
+import { PricingDialog } from "@/features/billing/pricing-dialog"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { cn } from "@/lib/utils"
 import {
@@ -284,6 +288,68 @@ function NoProductWarning({ compact = false }: { compact?: boolean }) {
   )
 }
 
+// no active plan: takes the sync-health strip's slot at the top of the page, so
+// the state is announced before the table is even reached. Same one-line shape
+// as the strip it replaces — the label and the CTA collapse on narrow screens.
+function NoPlanStrip({ onPick }: { onPick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onPick}
+      className="flex w-full shrink-0 items-center gap-2 rounded-xl bg-card px-3 py-2 text-left text-xs shadow-xs ring-1 ring-destructive/25 sm:gap-3 sm:px-3.5 sm:py-2.5 sm:text-[13px]"
+    >
+      <span className="grid size-6 shrink-0 place-items-center rounded-md bg-destructive/10 text-destructive">
+        <IconLock className="size-4" />
+      </span>
+      <span className="min-w-0 flex-1 truncate sm:flex-none">
+        <b className="font-semibold">Немає активного тарифу</b>
+        <span className="hidden sm:inline">
+          {" "}
+          — статистика кампаній прихована
+        </span>
+      </span>
+      <span className="ml-auto hidden shrink-0 items-center gap-1 font-medium text-primary hover:underline sm:inline-flex">
+        Обрати тариф
+        <IconArrowUpRight className="size-3.5" />
+      </span>
+      <IconArrowUpRight
+        className="size-4 shrink-0 text-primary sm:hidden"
+        aria-label="Обрати тариф"
+      />
+    </button>
+  )
+}
+
+// sits on top of the blurred table while the account has no plan — the toolbars
+// stay live, only the numbers are held back. Same shape as the dashboard's
+// locked stat widgets, with the crown flagged in the destructive tone.
+function NoPlanOverlay({ onPick }: { onPick: () => void }) {
+  return (
+    <div className="absolute inset-0 z-50 flex items-center justify-center bg-white/60 p-4 dark:bg-black/60">
+      <div className="flex flex-col items-center justify-center gap-3 px-6 py-10 text-center">
+        <div className="flex size-11 items-center justify-center rounded-full bg-muted">
+          <IconCrown className="size-5 text-destructive" />
+        </div>
+        <div>
+          <p className="text-sm font-semibold">Немає активного тарифу</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Підключіть тариф, щоб бачити статистику кампаній
+          </p>
+        </div>
+        <Button
+          size="sm"
+          variant="secondary"
+          className="gap-1.5"
+          onClick={onPick}
+        >
+          <IconCrown className="size-4" />
+          Підключіть тариф
+        </Button>
+      </div>
+    </div>
+  )
+}
+
 // CRM (order-derived) metrics — the ones that can't always be attributed to a
 // deeper level than the campaign
 const CRM_KEYS = new Set(CRM_METRIC_KEYS)
@@ -455,6 +521,10 @@ export function CampaignsPage() {
   // phones get a single "Фільтри" button + bottom sheet instead of the three
   // toolbar rows, and a denser table (see the DENSITY_* constants below)
   const isMobile = useIsMobile()
+  // no active plan — same account-level state the dashboard locks its widgets
+  // with; here it replaces the sync strip and veils the table
+  const { noPlan } = useDataSources()
+  const [pricingOpen, setPricingOpen] = useState(false)
   const [filtersOpen, setFiltersOpen] = useState(false)
   const [visible, setVisible] = useState<Record<string, boolean>>(() =>
     Object.fromEntries(allCols.map((c) => [c.key, true]))
@@ -1399,39 +1469,45 @@ export function CampaignsPage() {
 
   return (
     <div className="flex h-[calc(100svh-58px)] w-full min-w-0 flex-col gap-2.5 overflow-hidden p-2.5 sm:gap-4 sm:p-4 md:p-6">
-      {/* flat order-sync health strip — stands in for the page title. Narrow
+      {/* without a plan the sync health of orders is moot — the strip's slot
+          carries the "no active plan" notice instead */}
+      {noPlan ? (
+        <NoPlanStrip onPick={() => setPricingOpen(true)} />
+      ) : (
+        /* flat order-sync health strip — stands in for the page title. Narrow
           screens drop the bar and the link's label and make the whole strip the
-          tap target, so it always stays a single line. */}
-      <button
-        type="button"
-        className="flex w-full shrink-0 items-center gap-2 rounded-xl bg-card px-3 py-2 text-left text-xs shadow-xs sm:gap-3 sm:px-3.5 sm:py-2.5 sm:text-[13px]"
-      >
-        <span className="grid size-6 shrink-0 place-items-center rounded-md bg-amber-500/12 text-amber-600 dark:text-amber-400">
-          <IconPlugConnectedX className="size-4" />
-        </span>
-        <span className="min-w-0 flex-1 truncate sm:flex-none">
-          <b className="font-semibold tabular-nums">{unsyncedPct}%</b> замовлень
-          не синхронізовано
-          <span className="hidden sm:inline"> з кампаніями</span>
-        </span>
-        <span
-          className="hidden h-1.5 w-20 shrink-0 overflow-hidden rounded-full bg-muted sm:block"
-          title={unsyncedPct + "% не синхронізовано"}
+          tap target, so it always stays a single line. */
+        <button
+          type="button"
+          className="flex w-full shrink-0 items-center gap-2 rounded-xl bg-card px-3 py-2 text-left text-xs shadow-xs sm:gap-3 sm:px-3.5 sm:py-2.5 sm:text-[13px]"
         >
+          <span className="grid size-6 shrink-0 place-items-center rounded-md bg-amber-500/12 text-amber-600 dark:text-amber-400">
+            <IconPlugConnectedX className="size-4" />
+          </span>
+          <span className="min-w-0 flex-1 truncate sm:flex-none">
+            <b className="font-semibold tabular-nums">{unsyncedPct}%</b>{" "}
+            замовлень не синхронізовано
+            <span className="hidden sm:inline"> з кампаніями</span>
+          </span>
           <span
-            className="block h-full rounded-full bg-amber-500"
-            style={{ width: unsyncedPct + "%" }}
+            className="hidden h-1.5 w-20 shrink-0 overflow-hidden rounded-full bg-muted sm:block"
+            title={unsyncedPct + "% не синхронізовано"}
+          >
+            <span
+              className="block h-full rounded-full bg-amber-500"
+              style={{ width: unsyncedPct + "%" }}
+            />
+          </span>
+          <span className="ml-auto hidden shrink-0 items-center gap-1 font-medium text-primary hover:underline sm:inline-flex">
+            Дізнатися чому
+            <IconArrowUpRight className="size-3.5" />
+          </span>
+          <IconArrowUpRight
+            className="size-4 shrink-0 text-primary sm:hidden"
+            aria-label="Дізнатися чому"
           />
-        </span>
-        <span className="ml-auto hidden shrink-0 items-center gap-1 font-medium text-primary hover:underline sm:inline-flex">
-          Дізнатися чому
-          <IconArrowUpRight className="size-3.5" />
-        </span>
-        <IconArrowUpRight
-          className="size-4 shrink-0 text-primary sm:hidden"
-          aria-label="Дізнатися чому"
-        />
-      </button>
+        </button>
+      )}
 
       <Card className="flex min-h-0 flex-1 flex-col gap-0 overflow-hidden py-0">
         {/* phone toolbar: search + one "Фільтри" button, with the applied
@@ -1945,238 +2021,253 @@ export function CampaignsPage() {
 
         {/* table — the only element that scrolls; header row, totals row and the
             left "identity" columns stay frozen just like in Ads Manager */}
-        <Table
-          className={cn(
-            "w-auto table-fixed border-separate border-spacing-0 text-[13px]",
-            // phone density: one step down in type size and a shorter header;
-            // the cell padding comes from cellPad / nameXPad / rowYPad below
-            isMobile && "text-[11px] [&_th]:h-9"
-          )}
-          containerClassName="table-scroll min-h-0 flex-1 overflow-auto overscroll-none"
-        >
-          <TableHeader>
-            <TableRow className="hover:bg-transparent">
-              {showSelectCol && (
-                <TableHead
-                  className={cn(
-                    "sticky top-0 left-0 z-40 border-b px-0 text-center",
-                    HEADER_BG
-                  )}
-                  style={{ width: W_SELECT, minWidth: W_SELECT }}
-                >
-                  <div className="flex justify-center">
-                    <Checkbox
-                      checked={allSel}
-                      onCheckedChange={toggleAll}
-                      aria-label="Обрати всі"
-                    />
-                  </div>
-                </TableHead>
-              )}
-              {showToggleCol && (
-                <TableHead
-                  className={cn(
-                    "sticky top-0 z-40 cursor-pointer border-b px-0 text-center",
-                    HEADER_BG
-                  )}
-                  style={{
-                    width: W_TOGGLE,
-                    minWidth: W_TOGGLE,
-                    left: toggleLeft,
-                  }}
-                  onClick={() => toggleSort("active")}
-                >
-                  <span className="inline-flex items-center gap-1 select-none">
-                    ВКЛ
-                    <SortIndicator
-                      state={sort.key === "active" ? sort.dir : null}
-                    />
-                  </span>
-                </TableHead>
-              )}
-              <TableHead
-                className={cn(
-                  "sticky top-0 z-40 cursor-pointer overflow-hidden border-b",
-                  nameXPad,
-                  FROZEN_EDGE,
-                  HEADER_BG
-                )}
-                style={{
-                  width: nameW,
-                  minWidth: nameW,
-                  left: nameLeft,
-                }}
-                onClick={() => toggleSort("name")}
-              >
-                <span className="flex items-center gap-1 pr-2 select-none">
-                  <span className="truncate">
-                    {grouped ? "Товар / Кампанія" : "Кампанія"}
-                  </span>
-                  <SortIndicator
-                    state={sort.key === "name" ? sort.dir : null}
-                  />
-                </span>
-                {!isMobile && (
-                  <ResizeHandle onStart={(e) => startResize("name", e)} />
-                )}
-              </TableHead>
-              {cols.map((c) => (
-                <TableHead
-                  key={c.key}
-                  className={cn(
-                    "sticky top-0 z-20 cursor-pointer overflow-hidden border-b text-left",
-                    cellPad,
-                    c.emphasize ? HEADER_EMPH : HEADER_BG
-                  )}
-                  style={{
-                    width: colW(c),
-                    minWidth: colW(c),
-                  }}
-                  title={c.hint}
-                  onClick={() => toggleSort(c.key)}
-                >
-                  <span className="flex items-center gap-1 pr-2 select-none">
-                    <span className="truncate">{c.label}</span>
-                    <SortIndicator
-                      state={sort.key === c.key ? sort.dir : null}
-                    />
-                  </span>
-                  {!isMobile && (
-                    <ResizeHandle onStart={(e) => startResize(c.key, e)} />
-                  )}
-                </TableHead>
-              ))}
-            </TableRow>
-          </TableHeader>
-
-          <TableBody>
-            {switching
-              ? Array.from({ length: 8 }, (_, i) => renderSkeletonRow(i))
-              : grouped
-                ? (() => {
-                    // "По товарам" = everything tied to a product (groups + singles);
-                    // "По кампаніям" = campaigns with no product id (orphans)
-                    const productCount = entries.filter(
-                      (e) => e.kind !== "orphan"
-                    ).length
-                    const orphanTotal = entries.length - productCount
-                    const out: React.ReactNode[] = []
-                    let productHeaderDone = false
-                    let campaignHeaderDone = false
-                    for (const e of entries) {
-                      if (!productHeaderDone && e.kind !== "orphan") {
-                        productHeaderDone = true
-                        out.push(
-                          renderDivider(
-                            "hdr-product",
-                            IconPackage,
-                            "По товарам",
-                            productCount
-                          )
-                        )
-                      }
-                      if (!campaignHeaderDone && e.kind === "orphan") {
-                        campaignHeaderDone = true
-                        out.push(
-                          renderDivider(
-                            "hdr-campaign",
-                            IconSpeakerphone,
-                            "По кампаніям",
-                            orphanTotal
-                          )
-                        )
-                      }
-                      if (e.kind === "orphan") {
-                        out.push(renderRow(e.row, { warn: true }))
-                      } else if (e.kind === "single") {
-                        out.push(renderRow(e.row))
-                      } else {
-                        out.push(
-                          <Fragment key={"g:" + e.id}>
-                            {renderGroupRow(e)}
-                            {expanded.has(e.id) &&
-                              e.rows.map((r) => renderRow(r, { child: true }))}
-                          </Fragment>
-                        )
-                      }
-                    }
-                    return out
-                  })()
-                : rows.map((c) => renderRow(c))}
-            {!switching && rows.length === 0 && (
-              <TableRow className="hover:bg-transparent">
-                <TableCell
-                  colSpan={colSpan}
-                  className="py-16 text-center text-muted-foreground"
-                >
-                  Нічого не знайдено за фільтрами
-                </TableCell>
-              </TableRow>
+        <div className="relative flex min-h-0 flex-1 flex-col">
+          <div
+            className={cn(
+              "flex min-h-0 flex-1 flex-col",
+              noPlan &&
+                "pointer-events-none opacity-80 blur-[3px] saturate-75 select-none"
             )}
-          </TableBody>
+          >
+            <Table
+              className={cn(
+                "w-auto table-fixed border-separate border-spacing-0 text-[13px]",
+                // phone density: one step down in type size and a shorter header;
+                // the cell padding comes from cellPad / nameXPad / rowYPad below
+                isMobile && "text-[11px] [&_th]:h-9"
+              )}
+              containerClassName="table-scroll min-h-0 flex-1 overflow-auto overscroll-none"
+            >
+              <TableHeader>
+                <TableRow className="hover:bg-transparent">
+                  {showSelectCol && (
+                    <TableHead
+                      className={cn(
+                        "sticky top-0 left-0 z-40 border-b px-0 text-center",
+                        HEADER_BG
+                      )}
+                      style={{ width: W_SELECT, minWidth: W_SELECT }}
+                    >
+                      <div className="flex justify-center">
+                        <Checkbox
+                          checked={allSel}
+                          onCheckedChange={toggleAll}
+                          aria-label="Обрати всі"
+                        />
+                      </div>
+                    </TableHead>
+                  )}
+                  {showToggleCol && (
+                    <TableHead
+                      className={cn(
+                        "sticky top-0 z-40 cursor-pointer border-b px-0 text-center",
+                        HEADER_BG
+                      )}
+                      style={{
+                        width: W_TOGGLE,
+                        minWidth: W_TOGGLE,
+                        left: toggleLeft,
+                      }}
+                      onClick={() => toggleSort("active")}
+                    >
+                      <span className="inline-flex items-center gap-1 select-none">
+                        ВКЛ
+                        <SortIndicator
+                          state={sort.key === "active" ? sort.dir : null}
+                        />
+                      </span>
+                    </TableHead>
+                  )}
+                  <TableHead
+                    className={cn(
+                      "sticky top-0 z-40 cursor-pointer overflow-hidden border-b",
+                      nameXPad,
+                      FROZEN_EDGE,
+                      HEADER_BG
+                    )}
+                    style={{
+                      width: nameW,
+                      minWidth: nameW,
+                      left: nameLeft,
+                    }}
+                    onClick={() => toggleSort("name")}
+                  >
+                    <span className="flex items-center gap-1 pr-2 select-none">
+                      <span className="truncate">
+                        {grouped ? "Товар / Кампанія" : "Кампанія"}
+                      </span>
+                      <SortIndicator
+                        state={sort.key === "name" ? sort.dir : null}
+                      />
+                    </span>
+                    {!isMobile && (
+                      <ResizeHandle onStart={(e) => startResize("name", e)} />
+                    )}
+                  </TableHead>
+                  {cols.map((c) => (
+                    <TableHead
+                      key={c.key}
+                      className={cn(
+                        "sticky top-0 z-20 cursor-pointer overflow-hidden border-b text-left",
+                        cellPad,
+                        c.emphasize ? HEADER_EMPH : HEADER_BG
+                      )}
+                      style={{
+                        width: colW(c),
+                        minWidth: colW(c),
+                      }}
+                      title={c.hint}
+                      onClick={() => toggleSort(c.key)}
+                    >
+                      <span className="flex items-center gap-1 pr-2 select-none">
+                        <span className="truncate">{c.label}</span>
+                        <SortIndicator
+                          state={sort.key === c.key ? sort.dir : null}
+                        />
+                      </span>
+                      {!isMobile && (
+                        <ResizeHandle onStart={(e) => startResize(c.key, e)} />
+                      )}
+                    </TableHead>
+                  ))}
+                </TableRow>
+              </TableHeader>
 
-          <TableFooter className="border-0 bg-transparent">
-            <TableRow className="hover:bg-transparent">
-              {showSelectCol && (
-                <TableCell
-                  className={cn(
-                    "sticky bottom-0 left-0 z-30 border-t",
-                    FOOTER_BG
-                  )}
-                  style={{ width: W_SELECT, minWidth: W_SELECT }}
-                />
-              )}
-              {showToggleCol && (
-                <TableCell
-                  className={cn("sticky bottom-0 z-30 border-t", FOOTER_BG)}
-                  style={{
-                    width: W_TOGGLE,
-                    minWidth: W_TOGGLE,
-                    left: toggleLeft,
-                  }}
-                />
-              )}
-              <TableCell
-                className={cn(
-                  "sticky bottom-0 z-30 overflow-hidden border-t font-bold",
-                  nameXPad,
-                  FROZEN_EDGE,
-                  FOOTER_BG
+              <TableBody>
+                {switching
+                  ? Array.from({ length: 8 }, (_, i) => renderSkeletonRow(i))
+                  : grouped
+                    ? (() => {
+                        // "По товарам" = everything tied to a product (groups + singles);
+                        // "По кампаніям" = campaigns with no product id (orphans)
+                        const productCount = entries.filter(
+                          (e) => e.kind !== "orphan"
+                        ).length
+                        const orphanTotal = entries.length - productCount
+                        const out: React.ReactNode[] = []
+                        let productHeaderDone = false
+                        let campaignHeaderDone = false
+                        for (const e of entries) {
+                          if (!productHeaderDone && e.kind !== "orphan") {
+                            productHeaderDone = true
+                            out.push(
+                              renderDivider(
+                                "hdr-product",
+                                IconPackage,
+                                "По товарам",
+                                productCount
+                              )
+                            )
+                          }
+                          if (!campaignHeaderDone && e.kind === "orphan") {
+                            campaignHeaderDone = true
+                            out.push(
+                              renderDivider(
+                                "hdr-campaign",
+                                IconSpeakerphone,
+                                "По кампаніям",
+                                orphanTotal
+                              )
+                            )
+                          }
+                          if (e.kind === "orphan") {
+                            out.push(renderRow(e.row, { warn: true }))
+                          } else if (e.kind === "single") {
+                            out.push(renderRow(e.row))
+                          } else {
+                            out.push(
+                              <Fragment key={"g:" + e.id}>
+                                {renderGroupRow(e)}
+                                {expanded.has(e.id) &&
+                                  e.rows.map((r) =>
+                                    renderRow(r, { child: true })
+                                  )}
+                              </Fragment>
+                            )
+                          }
+                        }
+                        return out
+                      })()
+                    : rows.map((c) => renderRow(c))}
+                {!switching && rows.length === 0 && (
+                  <TableRow className="hover:bg-transparent">
+                    <TableCell
+                      colSpan={colSpan}
+                      className="py-16 text-center text-muted-foreground"
+                    >
+                      Нічого не знайдено за фільтрами
+                    </TableCell>
+                  </TableRow>
                 )}
-                style={{
-                  width: nameW,
-                  minWidth: nameW,
-                  left: nameLeft,
-                }}
-              >
-                <span className="truncate">
-                  Разом · {rows.length}{" "}
-                  {BREAKDOWN_VALUES[breakdown] ? "рядків" : ENTITY_NOUN[entity]}
-                </span>
-              </TableCell>
-              {cols.map((col) => (
-                <TableCell
-                  key={col.key}
-                  className={cn(
-                    "sticky bottom-0 z-10 overflow-hidden border-t text-left tabular-nums",
-                    cellPad,
-                    col.emphasize ? HEADER_EMPH : FOOTER_BG
+              </TableBody>
+
+              <TableFooter className="border-0 bg-transparent">
+                <TableRow className="hover:bg-transparent">
+                  {showSelectCol && (
+                    <TableCell
+                      className={cn(
+                        "sticky bottom-0 left-0 z-30 border-t",
+                        FOOTER_BG
+                      )}
+                      style={{ width: W_SELECT, minWidth: W_SELECT }}
+                    />
                   )}
-                >
-                  {RATE_KEYS.includes(col.key) ? (
-                    <span className="font-medium text-muted-foreground">
-                      сер. {fmt(foot[col.key], col.unit, currency)}
-                    </span>
-                  ) : (
-                    <span className="font-bold">
-                      {fmt(foot[col.key], col.unit, currency)}
-                    </span>
+                  {showToggleCol && (
+                    <TableCell
+                      className={cn("sticky bottom-0 z-30 border-t", FOOTER_BG)}
+                      style={{
+                        width: W_TOGGLE,
+                        minWidth: W_TOGGLE,
+                        left: toggleLeft,
+                      }}
+                    />
                   )}
-                </TableCell>
-              ))}
-            </TableRow>
-          </TableFooter>
-        </Table>
+                  <TableCell
+                    className={cn(
+                      "sticky bottom-0 z-30 overflow-hidden border-t font-bold",
+                      nameXPad,
+                      FROZEN_EDGE,
+                      FOOTER_BG
+                    )}
+                    style={{
+                      width: nameW,
+                      minWidth: nameW,
+                      left: nameLeft,
+                    }}
+                  >
+                    <span className="truncate">
+                      Разом · {rows.length}{" "}
+                      {BREAKDOWN_VALUES[breakdown]
+                        ? "рядків"
+                        : ENTITY_NOUN[entity]}
+                    </span>
+                  </TableCell>
+                  {cols.map((col) => (
+                    <TableCell
+                      key={col.key}
+                      className={cn(
+                        "sticky bottom-0 z-10 overflow-hidden border-t text-left tabular-nums",
+                        cellPad,
+                        col.emphasize ? HEADER_EMPH : FOOTER_BG
+                      )}
+                    >
+                      {RATE_KEYS.includes(col.key) ? (
+                        <span className="font-medium text-muted-foreground">
+                          сер. {fmt(foot[col.key], col.unit, currency)}
+                        </span>
+                      ) : (
+                        <span className="font-bold">
+                          {fmt(foot[col.key], col.unit, currency)}
+                        </span>
+                      )}
+                    </TableCell>
+                  ))}
+                </TableRow>
+              </TableFooter>
+            </Table>
+          </div>
+          {noPlan && <NoPlanOverlay onPick={() => setPricingOpen(true)} />}
+        </div>
       </Card>
 
       {/* every filter the desktop toolbars carry, in one bottom sheet */}
@@ -2206,6 +2297,8 @@ export function CampaignsPage() {
           onReset={resetFilters}
         />
       )}
+
+      <PricingDialog open={pricingOpen} onOpenChange={setPricingOpen} />
     </div>
   )
 }
