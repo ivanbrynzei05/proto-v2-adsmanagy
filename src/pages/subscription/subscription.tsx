@@ -309,7 +309,7 @@ function SubscriptionHero({
     HeroIcon = IconAlertTriangle
     kicker = "Потрібна оплата"
     title = "Оплата не пройшла"
-    subtitle = `Поповніть до ${formatPlanDate(state.graceUntil ?? state.renewalDate)} — доступ поки активний`
+    subtitle = `Поповніть до ${formatPlanDate(state.graceUntil ?? state.renewalDate)} - доступ поки активний`
     ringDays = d
     ringCaption = "у запасі"
     ringPct = ((3 - d) / 3) * 100
@@ -392,7 +392,7 @@ function SubscriptionHero({
         {state.status === "active" && !state.autoRenew && (
           <NoticeStrip
             icon={IconCalendarEvent}
-            text={`Автопродовження вимкнено — підписка завершиться ${formatPlanDate(state.renewalDate)}.`}
+            text={`Автопродовження вимкнено - підписка завершиться ${formatPlanDate(state.renewalDate)}.`}
             action={
               <Button size="sm" onClick={onResume} className="gap-1.5">
                 <IconRefresh className="size-4" />
@@ -633,7 +633,7 @@ function CurrentPlanCard({
                 )}
                 {state.autoRenew
                   ? "Тариф продовжиться автоматично"
-                  : `Вимкнено — завершиться ${formatPlanDate(state.renewalDate)}`}
+                  : `Вимкнено - завершиться ${formatPlanDate(state.renewalDate)}`}
               </div>
             </div>
             <Switch checked={state.autoRenew} onCheckedChange={onToggleAutoRenew} />
@@ -691,7 +691,7 @@ function SwitchYearlyDialog({
             </span>
           </div>
           <p className="text-xs text-muted-foreground">
-            Далі — ${money(yearly)} / рік. Зворотний перехід на місячну оплату
+            Далі - ${money(yearly)} / рік. Зворотний перехід на місячну оплату
             недоступний до кінця оплаченого року.
           </p>
           <div className="mt-1 flex flex-col gap-2">
@@ -768,7 +768,7 @@ function ManageAddonsDialog({
             Додатки до тарифу {plan.name}
           </DialogTitle>
           <DialogDescription className="text-xs">
-            Збільшення — одразу з пропорційною доплатою. Зменшення — з наступного
+            Збільшення - одразу з пропорційною доплатою. Зменшення - з наступного
             періоду, без повернень.
           </DialogDescription>
         </DialogHeader>
@@ -835,7 +835,7 @@ function ManageAddonsDialog({
           </div>
           {hasDecrease && (
             <p className="text-xs text-muted-foreground">
-              Зменшення набуде чинності {formatPlanDate(state.renewalDate)} — зараз
+              Зменшення набуде чинності {formatPlanDate(state.renewalDate)} - зараз
               нічого не повертаємо.
             </p>
           )}
@@ -1008,7 +1008,7 @@ export function SubscriptionManager() {
           </CardTitle>
           <p className="text-xs text-muted-foreground">
             {paid
-              ? "Дорожчий тариф — одразу з доплатою; дешевший — з наступного періоду"
+              ? "Дорожчий тариф - одразу з доплатою; дешевший - з наступного періоду"
               : "Більше акаунтів, учасників команди та інтеграцій на платних тарифах"}
           </p>
         </CardHeader>

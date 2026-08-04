@@ -10,7 +10,6 @@ import {
   IconChevronsUp,
   IconChevronUp,
   IconClock,
-  IconCoin,
   IconColumns,
   IconCrown,
   IconDownload,
@@ -31,6 +30,7 @@ import {
 } from "@tabler/icons-react"
 import { Fragment, useEffect, useMemo, useRef, useState } from "react"
 
+import { useCurrency } from "@/components/currency-provider"
 import { useDataSources } from "@/components/data-sources-provider"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -66,6 +66,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 import { PricingDialog } from "@/features/billing/pricing-dialog"
+import type { DisplayCurrency } from "@/features/currency/types"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { cn } from "@/lib/utils"
 import {
@@ -76,8 +77,6 @@ import {
   COL_GROUPS,
   COLUMNS,
   CRM_METRIC_KEYS,
-  CURRENCIES,
-  CURRENCY_SYMBOLS,
   fmt,
   parseProductId,
   PLATFORMS,
@@ -86,7 +85,6 @@ import {
   totals,
   type Column,
   type ColumnGroup,
-  type CurrencyCode,
   type MetricKey,
   type PlatformId,
   type Row,
@@ -101,13 +99,14 @@ import { PlatformBadge } from "./platform-badge"
 function ValueCell({
   row,
   col,
-  cur = "UAH",
+  cur,
   compact = false,
 }: {
   row: Record<MetricKey, number>
   col: Column
-  cur?: CurrencyCode
-  /** phone layout — drops the decorative mini-bar, keeps the number */
+  /** display currency from Налаштування - money columns are converted into it */
+  cur: DisplayCurrency
+  /** phone layout - drops the decorative mini-bar, keeps the number */
   compact?: boolean
 }) {
   const v = row[col.key]
@@ -167,7 +166,7 @@ const ENTITY_NOUN: Record<string, string> = {
   "Групи оголошень": "груп оголошень",
   Оголошення: "оголошень",
 }
-// phone tab labels — "Групи оголошень" is too long for a 3-tab strip
+// phone tab labels - "Групи оголошень" is too long for a 3-tab strip
 const ENTITY_SHORT: Record<string, string> = {
   Кампанії: "Кампанії",
   "Групи оголошень": "Групи",
@@ -217,7 +216,7 @@ const ADDITIVE_KEYS: MetricKey[] = [
   "buyerIncome",
   "ownerIncome",
 ]
-// Deterministic, slightly uneven weights that sum to 1 — rotated per row so not
+// Deterministic, slightly uneven weights that sum to 1 - rotated per row so not
 // every campaign splits in the exact same proportions.
 function breakdownWeights(n: number, rowSeed: number): number[] {
   const raw = Array.from({ length: n }, (_, i) => 1 + ((i + rowSeed) % n) * 0.4)
@@ -238,10 +237,10 @@ const FROZEN_SEL =
 const HEADER_BG = "bg-[color-mix(in_oklab,var(--muted)_45%,var(--card))]"
 const HEADER_EMPH = "bg-[color-mix(in_oklab,var(--primary)_9%,var(--card))]"
 const FOOTER_BG = "bg-[color-mix(in_oklab,var(--muted)_60%,var(--card))]"
-// right edge of the frozen name column — a hairline that reads as a seam while scrolling
+// right edge of the frozen name column - a hairline that reads as a seam while scrolling
 const FROZEN_EDGE = "shadow-[1px_0_0_0_var(--border)]"
 
-// product-group header row — a soft primary tint so it reads as a "shelf" the
+// product-group header row - a soft primary tint so it reads as a "shelf" the
 // campaigns sit under; the frozen variant is opaque so scrolled cells can't bleed through
 const GROUP_BG =
   "bg-[color-mix(in_oklab,var(--primary)_6%,var(--card))] hover:bg-[color-mix(in_oklab,var(--primary)_11%,var(--card))]"
@@ -281,7 +280,7 @@ function NoProductWarning({ compact = false }: { compact?: boolean }) {
         }
       />
       <TooltipContent className="max-w-[260px] leading-relaxed">
-        Назва не починається з ID товару — розбивка по товару недоступна.
+        Назва не починається з ID товару - розбивка по товару недоступна.
         Додайте ID на початок назви, напр. «1042 - …».
       </TooltipContent>
     </Tooltip>
@@ -290,7 +289,7 @@ function NoProductWarning({ compact = false }: { compact?: boolean }) {
 
 // no active plan: takes the sync-health strip's slot at the top of the page, so
 // the state is announced before the table is even reached. Same one-line shape
-// as the strip it replaces — the label and the CTA collapse on narrow screens.
+// as the strip it replaces - the label and the CTA collapse on narrow screens.
 function NoPlanStrip({ onPick }: { onPick: () => void }) {
   return (
     <button
@@ -305,7 +304,7 @@ function NoPlanStrip({ onPick }: { onPick: () => void }) {
         <b className="font-semibold">Немає активного тарифу</b>
         <span className="hidden sm:inline">
           {" "}
-          — статистика кампаній прихована
+          - статистика кампаній прихована
         </span>
       </span>
       <span className="ml-auto hidden shrink-0 items-center gap-1 font-medium text-primary hover:underline sm:inline-flex">
@@ -320,7 +319,7 @@ function NoPlanStrip({ onPick }: { onPick: () => void }) {
   )
 }
 
-// sits on top of the blurred table while the account has no plan — the toolbars
+// sits on top of the blurred table while the account has no plan - the toolbars
 // stay live, only the numbers are held back. Same shape as the dashboard's
 // locked stat widgets, with the crown flagged in the destructive tone.
 function NoPlanOverlay({ onPick }: { onPick: () => void }) {
@@ -350,7 +349,7 @@ function NoPlanOverlay({ onPick }: { onPick: () => void }) {
   )
 }
 
-// CRM (order-derived) metrics — the ones that can't always be attributed to a
+// CRM (order-derived) metrics - the ones that can't always be attributed to a
 // deeper level than the campaign
 const CRM_KEYS = new Set(CRM_METRIC_KEYS)
 
@@ -364,7 +363,7 @@ function crmUnresolved(name: string, entity: string) {
   return h % 3 === 0
 }
 
-// "no data at this level" cell — reads as clickable, opens an explanation (demo)
+// "no data at this level" cell - reads as clickable, opens an explanation (demo)
 function UnknownCell() {
   return (
     <Tooltip>
@@ -441,7 +440,7 @@ function RefreshControl({ compact = false }: { compact?: boolean }) {
     ? `Наступна спроба через ${remaining}с`
     : relativeTime(lastUpdated, now)
 
-  // on a phone the "Оновити" label goes but the sync time stays — it's the one
+  // on a phone the "Оновити" label goes but the sync time stays - it's the one
   // thing you can't get back by tapping something
   if (compact) {
     return (
@@ -521,7 +520,7 @@ export function CampaignsPage() {
   // phones get a single "Фільтри" button + bottom sheet instead of the three
   // toolbar rows, and a denser table (see the DENSITY_* constants below)
   const isMobile = useIsMobile()
-  // no active plan — same account-level state the dashboard locks its widgets
+  // no active plan - same account-level state the dashboard locks its widgets
   // with; here it replaces the sync strip and veils the table
   const { noPlan } = useDataSources()
   const [pricingOpen, setPricingOpen] = useState(false)
@@ -603,7 +602,7 @@ export function CampaignsPage() {
     () => new Set(AD_ACCOUNTS.map((a) => a.id))
   )
   const showToggleCol = true
-  // bulk selection is a desktop affordance — on a phone the frozen block has to
+  // bulk selection is a desktop affordance - on a phone the frozen block has to
   // stay under ~210px, and rows are opened by tapping their name instead
   const showSelectCol = !isMobile
   const [drill, setDrill] = useState<{ campaigns: string[]; groups: string[] }>(
@@ -618,8 +617,9 @@ export function CampaignsPage() {
   })
   // "Розбивка" is the primary mode selector; "По товарам" groups by product id
   const [breakdown, setBreakdown] = useState(BREAKDOWN_PRODUCT)
-  // display currency for money columns (mock data is stored in UAH)
-  const [currency, setCurrency] = useState<CurrencyCode>("UAH")
+  // display currency for money columns - set once in Налаштування → Загальне,
+  // so it stays the same everywhere instead of being a per-table filter
+  const { currency } = useCurrency()
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set())
 
   // loading skeletons: a full-page one on first load, and a short table pulse
@@ -642,7 +642,7 @@ export function CampaignsPage() {
   // "По товарам" groups by product id on every level (campaigns / groups / ads)
   const grouped = breakdown === BREAKDOWN_PRODUCT
 
-  // level 2 — ad accounts on the currently chosen platform(s)
+  // level 2 - ad accounts on the currently chosen platform(s)
   const scopedAccounts = useMemo(
     () => AD_ACCOUNTS.filter((a) => platforms.has(a.platform)),
     [platforms]
@@ -807,7 +807,7 @@ export function CampaignsPage() {
 
   const foot = useMemo(() => totals(rows), [rows])
 
-  // share of orders (approves) that can't be synced to a product — orders on
+  // share of orders (approves) that can't be synced to a product - orders on
   // campaigns whose name has no product id
   const unsyncedPct = useMemo(() => {
     let total = 0
@@ -950,14 +950,14 @@ export function CampaignsPage() {
       >,
     []
   )
-  // level 1 — platform
+  // level 1 - platform
   const platLabel =
     platforms.size === PLATFORMS.length
       ? "Усі платформи"
       : platforms.size === 1
         ? PLATFORM_BY_ID[[...platforms][0]].label
         : platforms.size + " платформи"
-  // level 2 — ad account (scoped to the chosen platform(s))
+  // level 2 - ad account (scoped to the chosen platform(s))
   const selAccounts = scopedAccounts.filter((a) => adAccounts.has(a.id))
   const accLabel =
     selAccounts.length === scopedAccounts.length
@@ -968,12 +968,11 @@ export function CampaignsPage() {
 
   // ---- mobile filter sheet plumbing ----
   const hiddenCols = allCols.length - cols.length
-  // how many filters differ from the default — the number on the "Фільтри" pill
+  // how many filters differ from the default - the number on the "Фільтри" pill
   const activeFilterCount =
     (platforms.size < PLATFORMS.length ? 1 : 0) +
     (selAccounts.length < scopedAccounts.length ? 1 : 0) +
     (breakdown !== BREAKDOWN_PRODUCT ? 1 : 0) +
-    (currency !== "UAH" ? 1 : 0) +
     (hiddenCols > 0 ? 1 : 0)
 
   function selectAllPlatforms() {
@@ -994,12 +993,11 @@ export function CampaignsPage() {
       )
     )
   }
-  // "Скинути" in the sheet — back to the state the page opens in
+  // "Скинути" in the sheet - back to the state the page opens in
   function resetFilters() {
     selectAllPlatforms()
     applyColumnPreset(null)
     setBreakdown(BREAKDOWN_PRODUCT)
-    setCurrency("UAH")
     setQuery("")
     const t = startOfDay(new Date())
     setDateRange({ from: addDays(t, -6), to: t })
@@ -1018,12 +1016,12 @@ export function CampaignsPage() {
   const toggleLeft = showSelectCol ? W_SELECT : 0
   const nameLeft = toggleLeft + (showToggleCol ? W_TOGGLE : 0)
   // On a phone the name column is fixed (resizing needs a mouse) and metric
-  // columns shrink to roughly two-and-a-bit per screen — wide enough for the
+  // columns shrink to roughly two-and-a-bit per screen - wide enough for the
   // longest formatted number, narrow enough to swipe through quickly.
   const nameW = isMobile ? 158 : colWidths.name
   const colW = (c: Column) =>
     isMobile ? mobileColWidth(c.label) : colWidths[c.key]
-  // phone density — one notch tighter than the desktop px-3 / py-2 cells
+  // phone density - one notch tighter than the desktop px-3 / py-2 cells
   const cellPad = isMobile ? "px-2 py-1.5" : "px-3"
   const nameXPad = isMobile ? "pl-2" : "pl-3"
   const rowYPad = isMobile ? "py-1.5" : "py-2"
@@ -1469,12 +1467,12 @@ export function CampaignsPage() {
 
   return (
     <div className="flex h-[calc(100svh-58px)] w-full min-w-0 flex-col gap-2.5 overflow-hidden p-2.5 sm:gap-4 sm:p-4 md:p-6">
-      {/* without a plan the sync health of orders is moot — the strip's slot
+      {/* without a plan the sync health of orders is moot - the strip's slot
           carries the "no active plan" notice instead */}
       {noPlan ? (
         <NoPlanStrip onPick={() => setPricingOpen(true)} />
       ) : (
-        /* flat order-sync health strip — stands in for the page title. Narrow
+        /* flat order-sync health strip - stands in for the page title. Narrow
           screens drop the bar and the link's label and make the whole strip the
           tap target, so it always stays a single line. */
         <button
@@ -1540,11 +1538,11 @@ export function CampaignsPage() {
           </div>
         )}
 
-        {/* data-source hierarchy: platform › ad account — desktop only; on a
+        {/* data-source hierarchy: platform › ad account - desktop only; on a
             phone these live in the filter sheet */}
         {!isMobile && (
           <div className="flex flex-wrap items-center gap-x-1.5 gap-y-2 border-b p-3.5">
-            {/* level 1 — platform */}
+            {/* level 1 - platform */}
             <DropdownMenu>
               <DropdownMenuTrigger
                 render={
@@ -1589,7 +1587,7 @@ export function CampaignsPage() {
 
             <IconChevronRight className="size-4 shrink-0 text-muted-foreground/50" />
 
-            {/* level 2 — ad account (scoped to the chosen platform(s)) */}
+            {/* level 2 - ad account (scoped to the chosen platform(s)) */}
             <DropdownMenu>
               <DropdownMenuTrigger
                 render={
@@ -1642,33 +1640,6 @@ export function CampaignsPage() {
             </DropdownMenu>
 
             <div className="ml-auto" />
-            {/* display currency for money columns */}
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                render={
-                  <Button variant="outline" size="sm" className="gap-1.5">
-                    <IconCoin className="size-4 text-muted-foreground" />
-                    {currency} {CURRENCY_SYMBOLS[currency]}
-                    <IconChevronDown className="size-4 text-muted-foreground" />
-                  </Button>
-                }
-              />
-              <DropdownMenuContent align="end">
-                <DropdownMenuLabel className="tracking-wide uppercase">
-                  Валюта
-                </DropdownMenuLabel>
-                <DropdownMenuRadioGroup
-                  value={currency}
-                  onValueChange={(v) => setCurrency(v as CurrencyCode)}
-                >
-                  {CURRENCIES.map((c) => (
-                    <DropdownMenuRadioItem key={c} value={c} closeOnClick>
-                      {c} {CURRENCY_SYMBOLS[c]}
-                    </DropdownMenuRadioItem>
-                  ))}
-                </DropdownMenuRadioGroup>
-              </DropdownMenuContent>
-            </DropdownMenu>
             <RefreshControl />
           </div>
         )}
@@ -1680,7 +1651,7 @@ export function CampaignsPage() {
             isMobile ? "px-2.5" : "px-3.5 pt-2.5"
           )}
         >
-          {/* the tabs scroll sideways on a phone instead of wrapping —
+          {/* the tabs scroll sideways on a phone instead of wrapping -
               overflow-y stays clipped so the row can't scroll vertically */}
           <div
             className={cn(
@@ -1730,7 +1701,7 @@ export function CampaignsPage() {
           )}
         </div>
 
-        {/* phone: what the filters currently add up to — tapping any of it
+        {/* phone: what the filters currently add up to - tapping any of it
             reopens the sheet on that setting */}
         {isMobile && (
           <div className="flex items-center gap-1.5 border-b px-2.5 py-2">
@@ -1744,7 +1715,6 @@ export function CampaignsPage() {
                 breakdown,
                 platforms.size < PLATFORMS.length ? platLabel : null,
                 selAccounts.length < scopedAccounts.length ? accLabel : null,
-                currency !== "UAH" ? currency : null,
               ]
                 .filter(Boolean)
                 .map((label, i) => (
@@ -1778,7 +1748,7 @@ export function CampaignsPage() {
             <span className="shrink-0 text-xs font-bold text-muted-foreground">
               {isMobile ? "Фільтр:" : "Фільтр за вибором:"}
             </span>
-            {/* on a phone the chips scroll sideways so the bar stays one row —
+            {/* on a phone the chips scroll sideways so the bar stays one row -
                 the label and the reset button are the fixed anchors */}
             <div
               className={cn(
@@ -1838,11 +1808,11 @@ export function CampaignsPage() {
           </div>
         )}
 
-        {/* action toolbar — desktop only; the phone equivalent is the search +
+        {/* action toolbar - desktop only; the phone equivalent is the search +
             "Фільтри" row above */}
         {!isMobile && (
           <div className="flex flex-wrap items-center gap-2.5 border-b p-3.5">
-            {/* Розбивка — primary mode selector, where the status tabs used to be */}
+            {/* Розбивка - primary mode selector, where the status tabs used to be */}
             <DropdownMenu>
               <DropdownMenuTrigger
                 render={
@@ -1923,7 +1893,7 @@ export function CampaignsPage() {
               </>
             )}
 
-            {/* search — fills the space between the left actions and the columns menu */}
+            {/* search - fills the space between the left actions and the columns menu */}
             <div className="relative ml-auto min-w-40 flex-1">
               <IconSearch className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
               <Input
@@ -2002,7 +1972,7 @@ export function CampaignsPage() {
 
         {/* heads-up: campaigns that can't be grouped because their name has no
             product id up front. Without a plan the table behind it is held back
-            anyway, so the warning has nothing to point at — the "no active plan"
+            anyway, so the warning has nothing to point at - the "no active plan"
             strip is the only notice that state should carry. */}
         {!noPlan && grouped && entity === "Кампанії" && orphanCount > 0 && (
           <div className="flex items-start gap-2 border-b bg-amber-500/[0.07] px-3.5 py-2 text-xs text-amber-700 dark:bg-amber-400/[0.07] dark:text-amber-400">
@@ -2010,7 +1980,7 @@ export function CampaignsPage() {
             <span className="min-w-0">
               <b className="font-semibold">{orphanCount}</b>{" "}
               {plural(orphanCount, "кампанія", "кампанії", "кампаній")} без ID у
-              назві — розбивка по товару для них недоступна.{" "}
+              назві - розбивка по товару для них недоступна.{" "}
               <button
                 type="button"
                 className="font-medium whitespace-nowrap underline underline-offset-2 hover:no-underline"
@@ -2021,7 +1991,7 @@ export function CampaignsPage() {
           </div>
         )}
 
-        {/* table — the only element that scrolls; header row, totals row and the
+        {/* table - the only element that scrolls; header row, totals row and the
             left "identity" columns stay frozen just like in Ads Manager */}
         <div className="relative flex min-h-0 flex-1 flex-col">
           <div
@@ -2289,8 +2259,6 @@ export function CampaignsPage() {
           adAccounts={adAccounts}
           onToggleAdAccount={toggleAdAccount}
           onAllAdAccounts={selectAllAdAccounts}
-          currency={currency}
-          onCurrency={setCurrency}
           visible={visible}
           onToggleColumn={(key) =>
             setVisible((v) => ({ ...v, [key]: !v[key] }))
@@ -2305,13 +2273,13 @@ export function CampaignsPage() {
   )
 }
 
-// full-page skeleton for the first load — mirrors the toolbar + table layout
+// full-page skeleton for the first load - mirrors the toolbar + table layout
 function CampaignsSkeleton({ cols }: { cols: number }) {
   const isMobile = useIsMobile()
   const metricCols = Math.min(cols, isMobile ? 2 : 7)
   return (
     <div className="flex h-[calc(100svh-58px)] w-full min-w-0 flex-col gap-2.5 overflow-hidden p-2.5 sm:gap-4 sm:p-4 md:p-6">
-      {/* sync strip — stands in for the page title */}
+      {/* sync strip - stands in for the page title */}
       <div className="flex shrink-0 items-center gap-3 rounded-xl bg-card px-3 py-2 shadow-xs sm:px-3.5 sm:py-2.5">
         <Skeleton className="size-6 shrink-0 rounded-md" />
         <Skeleton className="h-4 w-60 max-w-[45%]" />
@@ -2414,7 +2382,7 @@ const COL_WIDTHS_KEY = "campaigns.colWidths.v1"
 function defaultColWidth(label: string) {
   return Math.round(Math.min(180, Math.max(100, label.length * 7.5 + 34)))
 }
-// Phone widths: the same shape, scaled to the 11px type — about 2.5 metric
+// Phone widths: the same shape, scaled to the 11px type - about 2.5 metric
 // columns fit next to the frozen name column on a 390px screen.
 function mobileColWidth(label: string) {
   return Math.round(Math.min(116, Math.max(76, label.length * 5.5 + 22)))

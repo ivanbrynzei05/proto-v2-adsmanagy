@@ -11,6 +11,7 @@ import {
 import { useState } from "react"
 import { useLocation, useNavigate } from "react-router-dom"
 
+import { useExpenses } from "@/components/expenses-provider"
 import { useIntegrations } from "@/components/integrations-provider"
 import { useTheme } from "@/components/theme-provider"
 import { BillingPeriodToggle } from "@/components/ui/billing-period-toggle"
@@ -24,8 +25,9 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { PricingGrid } from "@/features/billing/plans"
+import { ExpensesStep } from "@/features/expenses/expenses-step"
+import { hasAllExpenses } from "@/features/expenses/types"
 import { AdAccountsStep } from "@/features/integrations/ad-accounts-step"
-import { CallCentersStep } from "@/features/integrations/call-centers-step"
 import { CrmStep } from "@/features/integrations/crm-step"
 import { cn } from "@/lib/utils"
 
@@ -43,10 +45,10 @@ export const ONBOARDING_STEPS = [
       "Синхронізуйте ліди та замовлення, щоб аналізувати апрув, дохід і конверсію по кожному джерелу",
   },
   {
-    title: "Додайте колцентри",
-    heading: "Додайте колцентри",
+    title: "Додайте витрати",
+    heading: "Додайте витрати",
     description:
-      "Підключіть колцентри, щоб відстежувати маржу, допродажі та ефективність операторів",
+      "Вкажіть, у що вам обходиться замовлення - упаковка, повернення, викуп та оплата колцентрів. З цих сум рахується маржа",
   },
   {
     title: "Оберіть тариф",
@@ -132,8 +134,8 @@ export function OnboardingPage() {
     connectedCrms,
     setConnectedCrms,
     callCenters,
-    setCallCenters,
   } = useIntegrations()
+  const { expenses } = useExpenses()
 
   const [billingPeriod, setBillingPeriod] = useState<"monthly" | "yearly">(
     "monthly"
@@ -160,15 +162,18 @@ export function OnboardingPage() {
   const hasAdAccounts = Object.values(connectedAccounts).some(
     (accounts) => (accounts?.length ?? 0) > 0
   )
+  // the expenses step also carries the call centres, so it's done only when
+  // both the values and at least one centre are in
+  const expensesDone = hasAllExpenses(expenses) && callCenters.length > 0
   const nextDisabled =
     (step === 1 && !hasAdAccounts) ||
     (step === 2 && connectedCrms.length === 0) ||
-    (step === 3 && callCenters.length === 0)
+    (step === 3 && !expensesDone)
 
   const completed = [
     hasAdAccounts,
     connectedCrms.length > 0,
-    callCenters.length > 0,
+    expensesDone,
     false,
   ]
 
@@ -248,12 +253,7 @@ export function OnboardingPage() {
                   setConnectedCrms={setConnectedCrms}
                 />
               )}
-              {step === 3 && (
-                <CallCentersStep
-                  callCenters={callCenters}
-                  setCallCenters={setCallCenters}
-                />
-              )}
+              {step === 3 && <ExpensesStep />}
               {step === 4 && (
                 <div className="space-y-4">
                   <div className="flex flex-col items-center">

@@ -219,7 +219,7 @@ export function PricingGrid({
   // Active subscription details. When present, paid plans open as an
   // upgrade/downgrade in the checkout panel instead of a fresh purchase.
   subscription?: Subscription
-  // Current resource usage — blocks a fresh subscription to a plan that is
+  // Current resource usage - blocks a fresh subscription to a plan that is
   // smaller than what the account already uses (trial/expired).
   usage?: Record<PlanFeatureKey, number>
   className?: string

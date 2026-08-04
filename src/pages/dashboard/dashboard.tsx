@@ -24,6 +24,7 @@ import { Bar, BarChart, LabelList, XAxis, YAxis } from "recharts"
 
 import sideStepsImage from "@/assets/side_steps.png"
 import { useDataSources } from "@/components/data-sources-provider"
+import { useExpenses } from "@/components/expenses-provider"
 import { useIntegrations } from "@/components/integrations-provider"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
@@ -59,6 +60,7 @@ import {
 } from "@/components/ui/table"
 import { PLAN_FEATURES } from "@/features/billing/plans"
 import { PricingDialog } from "@/features/billing/pricing-dialog"
+import { hasAllExpenses } from "@/features/expenses/types"
 import { cn } from "@/lib/utils"
 import { ONBOARDING_STEPS } from "@/pages/onboarding/onboarding"
 import {
@@ -151,7 +153,7 @@ function NotConnectedState({
   actionLabel?: string
   actionIcon?: Icon
   onAction?: () => void
-  // a missing plan is a harder stop than a missing connection — it dresses the
+  // a missing plan is a harder stop than a missing connection - it dresses the
   // icon disc exactly like the padlock chip on the "no active plan" strips:
   // soft destructive wash behind a destructive glyph
   alert?: boolean
@@ -284,11 +286,12 @@ function DateRangePicker({ onChange }: { onChange?: () => void }) {
 function OnboardingCallout({ onDismiss }: { onDismiss: () => void }) {
   const navigate = useNavigate()
   const { connectedAccounts, connectedCrms, callCenters } = useIntegrations()
+  const { expenses } = useExpenses()
 
   const stepDone = [
     Object.values(connectedAccounts).some((accs) => accs && accs.length > 0),
     connectedCrms.length > 0,
-    callCenters.length > 0,
+    hasAllExpenses(expenses) && callCenters.length > 0,
     false,
   ]
   const anyDone = stepDone.some(Boolean)
@@ -1013,7 +1016,7 @@ export function DashboardPage() {
 
   // loading skeletons: a full-page one on first load, and a short pulse over
   // the data widgets whenever the date range changes so the switch feels "live".
-  // `loading` is the demo switch in the header — it pins the full-page state.
+  // `loading` is the demo switch in the header - it pins the full-page state.
   const [firstLoad, setFirstLoad] = useState(true)
   const [reloading, setReloading] = useState(false)
   const pulseRef = useRef<number | null>(null)

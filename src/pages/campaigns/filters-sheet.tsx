@@ -29,13 +29,10 @@ import { cn } from "@/lib/utils"
 import {
   COL_GROUPS,
   COLUMNS,
-  CURRENCIES,
-  CURRENCY_SYMBOLS,
   PLATFORMS,
   PRESETS,
   type AdAccount,
   type ColumnGroup,
-  type CurrencyCode,
   type PlatformId,
 } from "./data"
 import { RangePanel } from "./date-range"
@@ -53,7 +50,7 @@ const CUSTOM_PERIOD = "__custom__"
 
 // ---- shared bits ----
 
-// full-width row with a checkbox — used for the multi-select lists (platforms,
+// full-width row with a checkbox - used for the multi-select lists (platforms,
 // ad accounts). The whole row is the hit target, the checkbox is decorative.
 function CheckRow({
   checked,
@@ -129,9 +126,6 @@ export type FiltersSheetProps = {
   onToggleAdAccount: (id: string) => void
   onAllAdAccounts: () => void
 
-  currency: CurrencyCode
-  onCurrency: (c: CurrencyCode) => void
-
   visible: Record<string, boolean>
   onToggleColumn: (key: string) => void
   onColumnPreset: (groups: ColumnGroup[] | null) => void
@@ -158,8 +152,6 @@ export function CampaignFiltersSheet(props: FiltersSheetProps) {
     adAccounts,
     onToggleAdAccount,
     onAllAdAccounts,
-    currency,
-    onCurrency,
     visible,
     onToggleColumn,
     onColumnPreset,
@@ -200,7 +192,7 @@ export function CampaignFiltersSheet(props: FiltersSheetProps) {
               Фільтри
             </SheetTitle>
             <SheetDescription className="sr-only">
-              Період, розбивка, джерела даних, валюта та стовпці таблиці
+              Період, розбивка, джерела даних та стовпці таблиці
             </SheetDescription>
             <Button
               variant="ghost"
@@ -224,7 +216,7 @@ export function CampaignFiltersSheet(props: FiltersSheetProps) {
 
         {/* scrolling body */}
         <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto overscroll-contain p-4">
-          {/* period — named ranges in the select, the calendar for anything
+          {/* period - named ranges in the select, the calendar for anything
               else; picking "Свій діапазон" is what unfolds it */}
           <Section title="Період">
             <Select
@@ -271,46 +263,24 @@ export function CampaignFiltersSheet(props: FiltersSheetProps) {
             )}
           </Section>
 
-          {/* breakdown + display currency — one choice each, so both are selects */}
-          <div className="grid grid-cols-[1fr_7.5rem] gap-3">
-            <Section title="Розбивка">
-              <Select
-                value={breakdown}
-                onValueChange={(v) => onBreakdown(v as string)}
-              >
-                <SelectTrigger className="h-11 w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {breakdowns.map((b) => (
-                    <SelectItem key={b} value={b}>
-                      {b}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </Section>
-
-            <Section title="Валюта">
-              <Select
-                value={currency}
-                onValueChange={(v) => onCurrency(v as CurrencyCode)}
-              >
-                <SelectTrigger className="h-11 w-full">
-                  <SelectValue>
-                    {(v: CurrencyCode) => `${v} ${CURRENCY_SYMBOLS[v]}`}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  {CURRENCIES.map((c) => (
-                    <SelectItem key={c} value={c}>
-                      {c} {CURRENCY_SYMBOLS[c]}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </Section>
-          </div>
+          {/* breakdown - one choice, so a select */}
+          <Section title="Розбивка">
+            <Select
+              value={breakdown}
+              onValueChange={(v) => onBreakdown(v as string)}
+            >
+              <SelectTrigger className="h-11 w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {breakdowns.map((b) => (
+                  <SelectItem key={b} value={b}>
+                    {b}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Section>
 
           {/* platform */}
           <Section

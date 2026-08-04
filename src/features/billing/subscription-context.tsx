@@ -5,7 +5,7 @@ import { SCENARIOS, type Scenario, type SubState } from "./subscription-state"
 
 // Shared subscription state for the prototype. Lets the settings screen and the
 // header billing chip read the same lifecycle state, so flipping a demo scenario
-// updates the whole app at once. (Sync is intentionally light — it's a demo.)
+// updates the whole app at once. (Sync is intentionally light - it's a demo.)
 type SubscriptionContextValue = {
   scenarioId: Scenario["id"]
   state: SubState

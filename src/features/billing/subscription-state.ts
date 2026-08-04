@@ -25,7 +25,7 @@ import {
 
 export type Period = "monthly" | "yearly"
 
-// trialing / active / past_due / expired — same states the backend tracks.
+// trialing / active / past_due / expired - same states the backend tracks.
 export type SubStatus = "trialing" | "active" | "past_due" | "expired"
 
 export type SubState = {
@@ -102,7 +102,7 @@ export function cycleTotal(
   return base + extra
 }
 
-// Fraction of the current period still unused — drives prorated charges.
+// Fraction of the current period still unused - drives prorated charges.
 export function remainingFraction(period: Period, renewalDate: Date): number {
   const start = new Date(renewalDate)
   if (period === "yearly") start.setFullYear(start.getFullYear() - 1)
@@ -186,7 +186,7 @@ export const SCENARIOS: Scenario[] = [
   {
     id: "trial-ending",
     label: "Тріал спливає",
-    hint: "Залишився 1 день — час обрати тариф",
+    hint: "Залишився 1 день - час обрати тариф",
     icon: IconHourglassHigh,
     tone: "sky",
     make: () => ({
@@ -251,7 +251,7 @@ export const SCENARIOS: Scenario[] = [
   {
     id: "scheduled-downgrade",
     label: "Запланований даунгрейд",
-    hint: "З наступного періоду — Solo",
+    hint: "З наступного періоду - Solo",
     icon: IconTrendingDown,
     tone: "violet",
     make: () => ({
@@ -285,7 +285,7 @@ export const SCENARIOS: Scenario[] = [
   {
     id: "expired",
     label: "Доступ закрито",
-    hint: "Підписка завершилась — paywall",
+    hint: "Підписка завершилась - paywall",
     icon: IconLock,
     tone: "red",
     make: () => ({

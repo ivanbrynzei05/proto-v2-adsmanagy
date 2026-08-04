@@ -2,6 +2,8 @@
 // Ported from the original prototype's data.js - numbers are internally
 // consistent so column toggles and totals look believable.
 
+import { BASE_CURRENCY, type DisplayCurrency } from "@/features/currency/types"
+
 // ---- base settings (would come from "Налаштування") ----
 const SETTINGS = {
   ccPerOrder: 20, // ₴ за оброблене замовлення
@@ -79,8 +81,8 @@ export type Row = Record<MetricKey, number> & {
   group?: string
 }
 
-// Metrics that come from CRM / order data — they can only be computed once ad
-// spend is matched to orders. When a row is unmatched these are shown as "—".
+// Metrics that come from CRM / order data - they can only be computed once ad
+// spend is matched to orders. When a row is unmatched these are shown as "-".
 export const CRM_METRIC_KEYS: MetricKey[] = [
   "approves",
   "approveRate",
@@ -146,7 +148,10 @@ export const PRODUCTS: Record<string, string> = {
 // Pulls the leading product id out of a campaign name, e.g.
 // "1042 - Neck Relax | FB" → { id: "1042", rest: "Neck Relax | FB" }.
 // Names that don't start with an id return { id: null } and get a warning.
-export function parseProductId(name: string): { id: string | null; rest: string } {
+export function parseProductId(name: string): {
+  id: string | null
+  rest: string
+} {
   const m = name.match(/^\s*#?(\d{3,6})\s*[-–—.:|·]\s*(.*\S)\s*$/)
   if (m) return { id: m[1], rest: m[2] }
   return { id: null, rest: name.trim() }
@@ -156,115 +161,280 @@ export function parseProductId(name: string): { id: string | null; rest: string 
 // more than one campaign (same id prefix) so the table can group them; a few
 // have no id prefix on purpose to demo the "no product breakdown" warning.
 const RAW: RawCampaign[] = [
-  // ── product 1042 · Масажер для шиї Neck Relax — 3 campaigns ──
+  // ── product 1042 · Масажер для шиї Neck Relax - 3 campaigns ──
   {
     name: "1042 - Neck Relax | FB широка",
-    platform: "facebook", adAccount: "fb_neo", portfolio: "p1", match: "ok",
+    platform: "facebook",
+    adAccount: "fb_neo",
+    portfolio: "p1",
+    match: "ok",
     active: true,
-    leads: 920, spend: 35300, approves: 372, impressions: 205000, clicks: 4600,
-    avgCheck: 1290, margin: 520, cogs: 410, buyout: 0.67, buyerPct: 0.3,
+    leads: 920,
+    spend: 35300,
+    approves: 372,
+    impressions: 205000,
+    clicks: 4600,
+    avgCheck: 1290,
+    margin: 520,
+    cogs: 410,
+    buyout: 0.67,
+    buyerPct: 0.3,
   },
   {
     name: "1042 - Neck Relax | Google пошук",
-    platform: "google", adAccount: "g_neo", portfolio: "p1", match: "ok",
+    platform: "google",
+    adAccount: "g_neo",
+    portfolio: "p1",
+    match: "ok",
     active: true,
-    leads: 610, spend: 26100, approves: 236, impressions: 128000, clicks: 2900,
-    avgCheck: 1290, margin: 520, cogs: 410, buyout: 0.64, buyerPct: 0.3,
+    leads: 610,
+    spend: 26100,
+    approves: 236,
+    impressions: 128000,
+    clicks: 2900,
+    avgCheck: 1290,
+    margin: 520,
+    cogs: 410,
+    buyout: 0.64,
+    buyerPct: 0.3,
   },
   {
     name: "1042 - Neck Relax | TikTok відео",
-    platform: "tiktok", adAccount: "tt_test", portfolio: "p2", match: "ok",
+    platform: "tiktok",
+    adAccount: "tt_test",
+    portfolio: "p2",
+    match: "ok",
     active: false,
-    leads: 310, spend: 12200, approves: 104, impressions: 79000, clicks: 1600,
-    avgCheck: 1290, margin: 520, cogs: 410, buyout: 0.63, buyerPct: 0.3,
+    leads: 310,
+    spend: 12200,
+    approves: 104,
+    impressions: 79000,
+    clicks: 1600,
+    avgCheck: 1290,
+    margin: 520,
+    cogs: 410,
+    buyout: 0.63,
+    buyerPct: 0.3,
   },
-  // ── product 2087 · Робот-пилосос CleanMax X9 — 2 campaigns ──
+  // ── product 2087 · Робот-пилосос CleanMax X9 - 2 campaigns ──
   {
     name: "2087 - CleanMax X9 | FB ретаргет",
-    platform: "facebook", adAccount: "fb_neo2", portfolio: "p1", match: "ok",
+    platform: "facebook",
+    adAccount: "fb_neo2",
+    portfolio: "p1",
+    match: "ok",
     active: true,
-    leads: 720, spend: 50100, approves: 268, impressions: 198000, clicks: 3600,
-    avgCheck: 3490, margin: 1180, cogs: 1620, buyout: 0.6, buyerPct: 0.25,
+    leads: 720,
+    spend: 50100,
+    approves: 268,
+    impressions: 198000,
+    clicks: 3600,
+    avgCheck: 3490,
+    margin: 1180,
+    cogs: 1620,
+    buyout: 0.6,
+    buyerPct: 0.25,
   },
   {
     name: "2087 - CleanMax X9 | Google",
-    platform: "google", adAccount: "g_prem", portfolio: "p3", match: "ok",
+    platform: "google",
+    adAccount: "g_prem",
+    portfolio: "p3",
+    match: "ok",
     active: true,
-    leads: 600, spend: 42300, approves: 220, impressions: 168000, clicks: 3100,
-    avgCheck: 3490, margin: 1180, cogs: 1620, buyout: 0.58, buyerPct: 0.25,
+    leads: 600,
+    spend: 42300,
+    approves: 220,
+    impressions: 168000,
+    clicks: 3100,
+    avgCheck: 3490,
+    margin: 1180,
+    cogs: 1620,
+    buyout: 0.58,
+    buyerPct: 0.25,
   },
-  // ── product 3310 · Тример для бороди BarberPro — 2 campaigns ──
+  // ── product 3310 · Тример для бороди BarberPro - 2 campaigns ──
   {
     name: "3310 - BarberPro | FB широка",
-    platform: "facebook", adAccount: "fb_neo", portfolio: "p1", match: "ok",
+    platform: "facebook",
+    adAccount: "fb_neo",
+    portfolio: "p1",
+    match: "ok",
     active: true,
-    leads: 1400, spend: 39200, approves: 588, impressions: 314000, clicks: 7700,
-    avgCheck: 890, margin: 360, cogs: 240, buyout: 0.72, buyerPct: 0.3,
+    leads: 1400,
+    spend: 39200,
+    approves: 588,
+    impressions: 314000,
+    clicks: 7700,
+    avgCheck: 890,
+    margin: 360,
+    cogs: 240,
+    buyout: 0.72,
+    buyerPct: 0.3,
   },
   {
     name: "3310 - BarberPro | TikTok",
-    platform: "tiktok", adAccount: "tt_prem", portfolio: "p3", match: "ok",
+    platform: "tiktok",
+    adAccount: "tt_prem",
+    portfolio: "p3",
+    match: "ok",
     active: true,
-    leads: 1010, spend: 28280, approves: 422, impressions: 226000, clicks: 5500,
-    avgCheck: 890, margin: 360, cogs: 240, buyout: 0.7, buyerPct: 0.3,
+    leads: 1010,
+    spend: 28280,
+    approves: 422,
+    impressions: 226000,
+    clicks: 5500,
+    avgCheck: 890,
+    margin: 360,
+    cogs: 240,
+    buyout: 0.7,
+    buyerPct: 0.3,
   },
   // ── single-campaign products (unique id, shown with a product chip) ──
   {
     name: "5006 - Корсет для постави PostureFix",
-    platform: "facebook", adAccount: "fb_neo", portfolio: "p1", match: "ok",
+    platform: "facebook",
+    adAccount: "fb_neo",
+    portfolio: "p1",
+    match: "ok",
     active: true,
-    leads: 980, spend: 31360, approves: 402, impressions: 248000, clicks: 5400,
-    avgCheck: 740, margin: 310, cogs: 150, buyout: 0.63, buyerPct: 0.35,
+    leads: 980,
+    spend: 31360,
+    approves: 402,
+    impressions: 248000,
+    clicks: 5400,
+    avgCheck: 740,
+    margin: 310,
+    cogs: 150,
+    buyout: 0.63,
+    buyerPct: 0.35,
   },
   {
     name: "4120 - Смарт-годинник FitWatch 7",
-    platform: "facebook", adAccount: "fb_neo", portfolio: "p1", match: "ok",
+    platform: "facebook",
+    adAccount: "fb_neo",
+    portfolio: "p1",
+    match: "ok",
     active: true,
-    leads: 1660, spend: 116200, approves: 560, impressions: 470000, clicks: 8900,
-    avgCheck: 1990, margin: 690, cogs: 920, buyout: 0.55, buyerPct: 0.25,
+    leads: 1660,
+    spend: 116200,
+    approves: 560,
+    impressions: 470000,
+    clicks: 8900,
+    avgCheck: 1990,
+    margin: 690,
+    cogs: 920,
+    buyout: 0.55,
+    buyerPct: 0.25,
   },
   {
     name: "6033 - Набір ножів SharpEdge",
-    platform: "google", adAccount: "g_test", portfolio: "p2", match: "ok",
+    platform: "google",
+    adAccount: "g_test",
+    portfolio: "p2",
+    match: "ok",
     active: true,
-    leads: 1120, spend: 39200, approves: 470, impressions: 286000, clicks: 6100,
-    avgCheck: 1150, margin: 470, cogs: 360, buyout: 0.68, buyerPct: 0.3,
+    leads: 1120,
+    spend: 39200,
+    approves: 470,
+    impressions: 286000,
+    clicks: 6100,
+    avgCheck: 1150,
+    margin: 470,
+    cogs: 360,
+    buyout: 0.68,
+    buyerPct: 0.3,
   },
   {
     name: "7008 - Сушарка для взуття DryStep",
-    platform: "google", adAccount: "g_prem", portfolio: "p3", match: "ok",
+    platform: "google",
+    adAccount: "g_prem",
+    portfolio: "p3",
+    match: "ok",
     active: false,
-    leads: 410, spend: 11070, approves: 158, impressions: 108000, clicks: 2400,
-    avgCheck: 590, margin: 250, cogs: 110, buyout: 0.57, buyerPct: 0.3,
+    leads: 410,
+    spend: 11070,
+    approves: 158,
+    impressions: 108000,
+    clicks: 2400,
+    avgCheck: 590,
+    margin: 250,
+    cogs: 110,
+    buyout: 0.57,
+    buyerPct: 0.3,
   },
   {
     name: "8102 - Органайзер CarTidy",
-    platform: "tiktok", adAccount: "tt_test", portfolio: "p2", match: "ok",
+    platform: "tiktok",
+    adAccount: "tt_test",
+    portfolio: "p2",
+    match: "ok",
     active: true,
-    leads: 880, spend: 22000, approves: 372, impressions: 210000, clicks: 5000,
-    avgCheck: 690, margin: 300, cogs: 130, buyout: 0.69, buyerPct: 0.35,
+    leads: 880,
+    spend: 22000,
+    approves: 372,
+    impressions: 210000,
+    clicks: 5000,
+    avgCheck: 690,
+    margin: 300,
+    cogs: 130,
+    buyout: 0.69,
+    buyerPct: 0.35,
   },
-  // ── campaigns with NO product id up front — can't be split by product ──
+  // ── campaigns with NO product id up front - can't be split by product ──
   {
-    name: "Розпродаж тижня — мікс товарів",
-    platform: "facebook", adAccount: "fb_neo2", portfolio: "p1", match: "no_product",
+    name: "Розпродаж тижня - мікс товарів",
+    platform: "facebook",
+    adAccount: "fb_neo2",
+    portfolio: "p1",
+    match: "no_product",
     active: true,
-    leads: 1450, spend: 40600, approves: 300, impressions: 300000, clicks: 7000,
-    avgCheck: 850, margin: 300, cogs: 200, buyout: 0.55, buyerPct: 0.3,
+    leads: 1450,
+    spend: 40600,
+    approves: 300,
+    impressions: 300000,
+    clicks: 7000,
+    avgCheck: 850,
+    margin: 300,
+    cogs: 200,
+    buyout: 0.55,
+    buyerPct: 0.3,
   },
   {
     name: "Масажний пістолет PulseGun",
-    platform: "google", adAccount: "g_prem", portfolio: "p3", match: "no_product",
+    platform: "google",
+    adAccount: "g_prem",
+    portfolio: "p3",
+    match: "no_product",
     active: true,
-    leads: 1290, spend: 90300, approves: 442, impressions: 352000, clicks: 7200,
-    avgCheck: 2290, margin: 820, cogs: 1080, buyout: 0.58, buyerPct: 0.25,
+    leads: 1290,
+    spend: 90300,
+    approves: 442,
+    impressions: 352000,
+    clicks: 7200,
+    avgCheck: 2290,
+    margin: 820,
+    cogs: 1080,
+    buyout: 0.58,
+    buyerPct: 0.25,
   },
   {
     name: "Зволожувач повітря AromaMist",
-    platform: "tiktok", adAccount: "tt_prem", portfolio: "p3", match: "no_product",
+    platform: "tiktok",
+    adAccount: "tt_prem",
+    portfolio: "p3",
+    match: "no_product",
     active: false,
-    leads: 540, spend: 16740, approves: 196, impressions: 142000, clicks: 3100,
-    avgCheck: 990, margin: 380, cogs: 300, buyout: 0.6, buyerPct: 0.3,
+    leads: 540,
+    spend: 16740,
+    approves: 196,
+    impressions: 142000,
+    clicks: 3100,
+    avgCheck: 990,
+    margin: 380,
+    cogs: 300,
+    buyout: 0.6,
+    buyerPct: 0.3,
   },
 ]
 
@@ -350,11 +520,31 @@ export const PLATFORMS: Platform[] = [
 
 // ---- ad accounts (each sits under one business + one platform) ----
 export const AD_ACCOUNTS: AdAccount[] = [
-  { id: "fb_neo", name: "Neo Ads · Facebook", platform: "facebook", business: "p1" },
-  { id: "fb_neo2", name: "Neo Ads · Facebook 2", platform: "facebook", business: "p1" },
+  {
+    id: "fb_neo",
+    name: "Neo Ads · Facebook",
+    platform: "facebook",
+    business: "p1",
+  },
+  {
+    id: "fb_neo2",
+    name: "Neo Ads · Facebook 2",
+    platform: "facebook",
+    business: "p1",
+  },
   { id: "g_neo", name: "Neo Ads · Google", platform: "google", business: "p1" },
-  { id: "g_test", name: "Тест-кабінет · Google", platform: "google", business: "p2" },
-  { id: "tt_test", name: "Тест-кабінет · TikTok", platform: "tiktok", business: "p2" },
+  {
+    id: "g_test",
+    name: "Тест-кабінет · Google",
+    platform: "google",
+    business: "p2",
+  },
+  {
+    id: "tt_test",
+    name: "Тест-кабінет · TikTok",
+    platform: "tiktok",
+    business: "p2",
+  },
   { id: "g_prem", name: "Prime · Google", platform: "google", business: "p3" },
   { id: "tt_prem", name: "Prime · TikTok", platform: "tiktok", business: "p3" },
 ]
@@ -416,7 +606,10 @@ RAW.forEach((r, ci) => {
     aFracs.forEach((af, ai) => {
       const aRaw = scaleRaw(gRaw, af)
       aRaw.name =
-        prefix + GROUP_LABELS[gi] + " · " + AD_LABELS[(gi + ai) % AD_LABELS.length]
+        prefix +
+        GROUP_LABELS[gi] +
+        " · " +
+        AD_LABELS[(gi + ai) % AD_LABELS.length]
       ADS.push({
         ...compute(aRaw),
         portfolio: r.portfolio,
@@ -623,25 +816,6 @@ export function totals(rows: Row[]): Record<MetricKey, number> {
   }
 }
 
-// ---- display currency ----
-// Mock data is stored in UAH; picking another currency converts on display
-// using these fixed demo rates (₴ per one unit of the currency).
-export type CurrencyCode = "UAH" | "USD" | "EUR"
-
-export const CURRENCIES: CurrencyCode[] = ["UAH", "USD", "EUR"]
-
-export const CURRENCY_RATES: Record<CurrencyCode, number> = {
-  UAH: 1,
-  USD: SETTINGS.usdRate, // 41.5 — same rate the metric formulas use
-  EUR: 45.2,
-}
-
-export const CURRENCY_SYMBOLS: Record<CurrencyCode, string> = {
-  UAH: "₴",
-  USD: "$",
-  EUR: "€",
-}
-
 // ---- formatting helpers (narrow no-break space grouping, like the prototype) ----
 const NB = " " // narrow no-break space
 
@@ -652,20 +826,22 @@ function groupNum(n: number) {
   return (neg ? "−" : "") + s
 }
 
+// Money is stored in UAH; the display currency (picked in Налаштування) carries
+// the rate everything is divided by on the way to the screen.
 export function fmt(
   val: number | null | undefined,
   unit: Column["unit"],
-  currency: CurrencyCode = "UAH"
+  currency: DisplayCurrency = BASE_CURRENCY
 ) {
   if (val === null || val === undefined) return "-"
   if (unit === "₴") {
-    if (currency === "UAH") return groupNum(val) + NB + "₴"
-    const converted = val / CURRENCY_RATES[currency]
+    if (currency.code === BASE_CURRENCY.code) return groupNum(val) + NB + "₴"
+    const converted = val / currency.rate
     // converted amounts are small (₴ → $/€), so keep two decimals
     return (
       converted.toLocaleString("uk", { maximumFractionDigits: 2 }) +
       NB +
-      CURRENCY_SYMBOLS[currency]
+      currency.symbol
     )
   }
   if (unit === "%")

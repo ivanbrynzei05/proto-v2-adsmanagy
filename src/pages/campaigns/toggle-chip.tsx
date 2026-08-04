@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils"
 // Chip rows scroll sideways rather than wrapping, so a section stays one line
 // tall however many options it holds and the sheet keeps every filter within
 // reach. `bleed` cancels the parent's padding so the row can scroll edge to
-// edge — pass the matching negative/positive pair, e.g. "-mx-4 px-4".
+// edge - pass the matching negative/positive pair, e.g. "-mx-4 px-4".
 export function ChipRow({
   bleed,
   className,
@@ -29,7 +29,7 @@ export function ChipRow({
 }
 
 // A chip that turns one column on or off. The little checkbox is what makes it
-// read as a toggle rather than a link — the sections where only one value can
+// read as a toggle rather than a link - the sections where only one value can
 // be picked use a select instead, so this shape always means "many of these".
 export function ToggleChip({
   active,

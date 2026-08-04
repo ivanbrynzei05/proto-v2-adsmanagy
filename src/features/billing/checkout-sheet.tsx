@@ -143,7 +143,7 @@ export function CheckoutSheet({
   // null → closed. A non-null paid plan id opens the panel.
   planId: string | null
   subscription?: Subscription
-  // Current resource usage — lets a fresh subscription (trial/expired) block
+  // Current resource usage - lets a fresh subscription (trial/expired) block
   // plans whose limits are below what the account already uses.
   usage?: Record<PlanFeatureKey, number>
   onOpenChange: (open: boolean) => void
@@ -307,7 +307,7 @@ function CheckoutBody({
   // --- Fit check --------------------------------------------------------
   // Usage must fit the chosen plan's included limits. For a downgrade we read
   // the active subscription; for a fresh subscription (trial/expired that still
-  // has resources) we read the usage passed in — so you can't pick a plan
+  // has resources) we read the usage passed in - so you can't pick a plan
   // smaller than what the account already uses.
   const checkUsage =
     mode === "downgrade" && subscription

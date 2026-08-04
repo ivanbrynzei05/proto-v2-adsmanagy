@@ -422,7 +422,7 @@ function StatusMappingStep({
   )
 }
 
-// Editing opens on "choose" — credentials and status mapping are separate jobs,
+// Editing opens on "choose" - credentials and status mapping are separate jobs,
 // so the dialog asks which one first instead of walking through both. Connecting
 // a new CRM starts at "form" and goes through every screen in order.
 type Phase = "choose" | "form" | "connecting" | "mapping"
@@ -812,7 +812,7 @@ export function CrmStep({
   setConnectedCrms: Dispatch<SetStateAction<ConnectedCrm[]>>
   animate?: boolean
 }) {
-  // one dialog serves both jobs — "add" starts empty, "edit" opens the CRM at
+  // one dialog serves both jobs - "add" starts empty, "edit" opens the CRM at
   // that index with its credentials and mapping already filled in
   const [dialog, setDialog] = useState<
     { mode: "add" } | { mode: "edit"; index: number } | null

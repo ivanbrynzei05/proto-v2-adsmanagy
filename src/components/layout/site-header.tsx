@@ -358,7 +358,7 @@ function BillingStatus() {
                 )}
               </div>
 
-              {/* Manage hint — the whole chip is clickable */}
+              {/* Manage hint - the whole chip is clickable */}
               <div className="flex items-center justify-end gap-1 border-t bg-muted/30 px-3 py-2 text-[11px] font-medium text-muted-foreground">
                 Керувати підпискою
                 <IconArrowRight className="size-3" />

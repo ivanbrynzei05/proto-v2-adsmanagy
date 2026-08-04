@@ -136,7 +136,7 @@
    on hover. Colour is derived from --foreground so it adapts to light/dark. */
 .table-scroll {
   scrollbar-gutter: stable;
-  /* NB: intentionally no scrollbar-width / scrollbar-color — setting either makes
+  /* NB: intentionally no scrollbar-width / scrollbar-color - setting either makes
      Chromium use the standard (auto-hiding overlay on macOS) bar and ignore the
      ::-webkit-scrollbar rules below, which are what keep it always visible. */
 }

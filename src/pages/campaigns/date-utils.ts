@@ -1,7 +1,7 @@
 // Date helpers shared by the campaigns date picker (desktop popover + the
 // mobile filter sheet). Kept apart from the components so both can import them.
 
-// ---- date-range picker (calendar, "від — до") ----
+// ---- date-range picker (calendar, "від - до") ----
 export type DateRange = { from: Date; to: Date }
 
 export const UA_MONTHS = [
@@ -33,7 +33,7 @@ export const UA_MONTHS_SHORT = [
   "гру",
 ]
 export const UA_WEEKDAYS = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Нд"]
-// earliest selectable day — the window is limited to the last 1.5 months
+// earliest selectable day - the window is limited to the last 1.5 months
 export const DATE_WINDOW_DAYS = 45
 
 export function startOfDay(d: Date) {
@@ -59,7 +59,7 @@ export function fmtDay(d: Date, withYear = false) {
     (withYear ? ` ${d.getFullYear()}` : "")
   )
 }
-// The named ranges offered everywhere a period is picked — the popover's quick
+// The named ranges offered everywhere a period is picked - the popover's quick
 // list, the mobile period select, and the label lookup below.
 export function datePresets(
   today: Date
@@ -75,7 +75,7 @@ export function datePresets(
 }
 
 // Trigger / footer label: ranges that match a preset show the preset's name; a
-// lone day collapses to its date; anything else reads "від — до".
+// lone day collapses to its date; anything else reads "від - до".
 export function rangeLabel(r: DateRange, today: Date) {
   for (const { label, range } of datePresets(today)) {
     if (sameDay(r.from, range.from) && sameDay(r.to, range.to)) return label

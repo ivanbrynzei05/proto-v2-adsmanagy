@@ -1,9 +1,9 @@
 import {
   IconAd,
+  IconCoins,
   IconCreditCard,
   IconDatabase,
   IconDeviceDesktop,
-  IconHeadset,
   IconMoon,
   IconPlugConnected,
   IconSettings,
@@ -18,22 +18,17 @@ import { useIntegrations } from "@/components/integrations-provider"
 import { useTheme } from "@/components/theme-provider"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { useSubscription } from "@/features/billing/subscription-context"
+import { CurrencyControls } from "@/features/currency/currency-controls"
+import { ExpensesSection } from "@/features/expenses/expenses-section"
 import { AdAccountsStep } from "@/features/integrations/ad-accounts-step"
-import { CallCentersStep } from "@/features/integrations/call-centers-step"
 import { CrmStep } from "@/features/integrations/crm-step"
 import { SubscriptionManager } from "@/pages/subscription/subscription"
 import { cn } from "@/lib/utils"
 
-type SectionId = "general" | "sources" | "billing" | "plans"
+type SectionId = "general" | "sources" | "expenses" | "billing" | "plans"
 
 const SECTIONS: {
   id: SectionId
@@ -41,16 +36,21 @@ const SECTIONS: {
   icon: Icon
 }[] = [
   { id: "general", label: "Загальне", icon: IconSettings },
-  { id: "sources", label: "Джерела даних", icon: IconPlugConnected },
+  { id: "sources", label: "Інтеграції", icon: IconPlugConnected },
+  { id: "expenses", label: "Витрати", icon: IconCoins },
   { id: "plans", label: "Підписка", icon: IconCreditCard },
   { id: "billing", label: "Баланс", icon: IconWallet },
 ]
 
 // Map a `?section=` query value (e.g. from the header billing chip) onto a tab.
+// "integrations" is accepted as an alias so links can use the new name while
+// older `?section=sources` links keep working.
 function sectionFromParam(value: string | null): SectionId {
+  if (value === "integrations") return "sources"
   if (
     value === "sources" ||
     value === "general" ||
+    value === "expenses" ||
     value === "billing" ||
     value === "plans"
   ) {
@@ -61,22 +61,25 @@ function sectionFromParam(value: string | null): SectionId {
 
 function Row({
   label,
-  description,
   children,
+  /** lets a multi-control right side fold onto its own line on a phone */
+  wrap,
 }: {
   label: string
-  description?: string
   children: React.ReactNode
+  wrap?: boolean
 }) {
   return (
-    <div className="flex items-center justify-between gap-4 border-b py-2.5 last:border-b-0">
-      <div className="min-w-0">
-        <div className="text-sm font-medium">{label}</div>
-        {description && (
-          <div className="text-xs text-muted-foreground">{description}</div>
-        )}
+    <div
+      className={cn(
+        "flex items-center justify-between gap-4 border-b py-2.5 last:border-b-0",
+        wrap && "flex-wrap"
+      )}
+    >
+      <div className="min-w-0 text-sm font-medium">{label}</div>
+      <div className={cn("flex justify-end", wrap ? "min-w-0" : "shrink-0")}>
+        {children}
       </div>
-      <div className="flex shrink-0 justify-end">{children}</div>
     </div>
   )
 }
@@ -128,9 +131,6 @@ function GeneralSection() {
         <CardTitle className="text-[15px] font-bold tracking-tight">
           Загальне
         </CardTitle>
-        <CardDescription className="text-xs">
-          Профіль акаунту та налаштування вигляду
-        </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col py-0">
         <Row label="Імʼя та прізвище">
@@ -157,8 +157,13 @@ function GeneralSection() {
             className={inputClass}
           />
         </Row>
-        <Row label="Тема" description="Світла, темна або системна">
+        <Row label="Тема">
           <ThemeSwitch />
+        </Row>
+        {/* currency, its rate source and the rate itself - one setting, so one
+            row, the same way the theme sits on one */}
+        <Row wrap label="Валюта">
+          <CurrencyControls />
         </Row>
         <div className="flex justify-end py-3">
           <Button className="bg-neutral-900 text-white hover:bg-neutral-800 dark:bg-white dark:text-neutral-900 dark:hover:bg-neutral-200">
@@ -170,7 +175,9 @@ function GeneralSection() {
   )
 }
 
-type SourceTab = "ads" | "crm" | "callCenters"
+// Call centres used to live here, but they're a cost line rather than a data
+// source - they now sit under Витрати.
+type SourceTab = "ads" | "crm"
 
 function SourcesSection() {
   const {
@@ -178,8 +185,6 @@ function SourcesSection() {
     setConnectedAccounts,
     connectedCrms,
     setConnectedCrms,
-    callCenters,
-    setCallCenters,
   } = useIntegrations()
   const [tab, setTab] = useState<SourceTab>("ads")
 
@@ -187,15 +192,12 @@ function SourcesSection() {
     id: SourceTab
     icon: Icon
     title: string
-    description: string
     count: number
   }[] = [
     {
       id: "ads",
       icon: IconAd,
       title: "Рекламні кабінети",
-      description:
-        "Підключіть рекламні платформи, щоб бачити витрати та ROI у аналітиці",
       count: Object.values(connectedAccounts).reduce(
         (sum, accounts) => sum + (accounts?.length ?? 0),
         0
@@ -205,15 +207,7 @@ function SourcesSection() {
       id: "crm",
       icon: IconDatabase,
       title: "CRM",
-      description: "Дані про ліди, апруви та дохід надходять із CRM-системи",
       count: connectedCrms.length,
-    },
-    {
-      id: "callCenters",
-      icon: IconHeadset,
-      title: "Колцентри",
-      description: "Умови оплати колцентрів для розрахунку маржі та допродажів",
-      count: callCenters.length,
     },
   ]
 
@@ -251,14 +245,9 @@ function SourcesSection() {
             )
           })}
         </div>
-        <div>
-          <CardTitle className="text-[15px] font-bold tracking-tight">
-            {current.title}
-          </CardTitle>
-          <CardDescription className="text-xs">
-            {current.description}
-          </CardDescription>
-        </div>
+        <CardTitle className="text-[15px] font-bold tracking-tight">
+          {current.title}
+        </CardTitle>
       </CardHeader>
       <CardContent>
         {tab === "ads" && (
@@ -275,13 +264,6 @@ function SourcesSection() {
             animate={false}
           />
         )}
-        {tab === "callCenters" && (
-          <CallCentersStep
-            callCenters={callCenters}
-            setCallCenters={setCallCenters}
-            animate={false}
-          />
-        )}
       </CardContent>
     </Card>
   )
@@ -295,10 +277,6 @@ function BalanceCard() {
         <CardTitle className="text-[15px] font-bold tracking-tight">
           Баланс
         </CardTitle>
-        <CardDescription className="text-xs">
-          З балансу списуються тариф і додатки — поповнюйте для безперебійної
-          роботи аналітики
-        </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3">
@@ -363,6 +341,7 @@ export function SettingsPage() {
         <div className="min-w-0">
           {active === "general" && <GeneralSection />}
           {active === "sources" && <SourcesSection />}
+          {active === "expenses" && <ExpensesSection />}
           {active === "plans" && <SubscriptionManager />}
           {active === "billing" && <BalanceCard />}
         </div>

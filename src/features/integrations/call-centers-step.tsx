@@ -105,7 +105,7 @@ function AddCallCenterDialog({
                 onChange={(e) =>
                   setConfirmedOrderPrice(e.target.value.replace(/[^\d.,]/g, ""))
                 }
-                placeholder="0"
+                placeholder="Вкажіть суму"
                 inputMode="decimal"
                 className="h-full min-w-0 flex-1 rounded-none border-0 px-2.5 shadow-none focus-visible:ring-0"
               />
@@ -146,7 +146,7 @@ function AddCallCenterDialog({
                 onChange={(e) =>
                   setUpsellFeePercent(e.target.value.replace(/[^\d.,]/g, ""))
                 }
-                placeholder="0"
+                placeholder="Вкажіть відсоток"
                 inputMode="decimal"
                 className="h-full min-w-0 flex-1 rounded-none border-0 px-2.5 shadow-none focus-visible:ring-0"
               />
@@ -186,10 +186,14 @@ export function CallCentersStep({
   callCenters,
   setCallCenters,
   animate = true,
+  // The expenses page already explains what call centres are doing there, so
+  // it turns the intro alert off instead of saying it twice.
+  showHint = true,
 }: {
   callCenters: CallCenter[]
   setCallCenters: Dispatch<SetStateAction<CallCenter[]>>
   animate?: boolean
+  showHint?: boolean
 }) {
   const [addOpen, setAddOpen] = useState(false)
   const [centerToDelete, setCenterToDelete] = useState<number | null>(null)
@@ -197,18 +201,20 @@ export function CallCentersStep({
 
   return (
     <div className="flex flex-col gap-3">
-      <Alert
-        variant="info"
-        className={cn(
-          animate && "animate-in duration-300 fade-in slide-in-from-right-8"
-        )}
-      >
-        <IconInfoCircle />
-        <AlertDescription>
-          Додайте колцентри та умови оплати, щоб бачити маржу та допродажі в
-          аналітиці
-        </AlertDescription>
-      </Alert>
+      {showHint && (
+        <Alert
+          variant="info"
+          className={cn(
+            animate && "animate-in duration-300 fade-in slide-in-from-right-8"
+          )}
+        >
+          <IconInfoCircle />
+          <AlertDescription>
+            Додайте колцентри та умови оплати, щоб бачити маржу та допродажі в
+            аналітиці
+          </AlertDescription>
+        </Alert>
+      )}
       <div
         className={cn(
           "rounded-lg border p-3.5",

@@ -25,7 +25,7 @@ import {
   type DateRange,
 } from "./date-utils"
 
-// The month grid for picking a "від — до" period. Future days are disabled, and
+// The month grid for picking a "від - до" period. Future days are disabled, and
 // nothing older than DATE_WINDOW_DAYS back can be chosen.
 //
 // `layout` decides how it's arranged: "popover" puts the named ranges in a
@@ -50,7 +50,7 @@ export function RangePanel({
   const [view, setView] = useState(
     () => new Date(value.to.getFullYear(), value.to.getMonth(), 1)
   )
-  // the range being edited — only committed to the parent on "Застосувати"
+  // the range being edited - only committed to the parent on "Застосувати"
   const [draft, setDraft] = useState<DateRange>(value)
   // while an anchor is set we're mid-selection (one end chosen, waiting for the
   // second); hover previews the other end
@@ -83,19 +83,19 @@ export function RangePanel({
   function pick(d: Date) {
     if (isDisabled(d)) return
     if (!anchor) {
-      // first click — start a fresh selection (draft is a single day for now)
+      // first click - start a fresh selection (draft is a single day for now)
       setAnchor(d)
       setDraft({ from: d, to: d })
       setHover(d)
       return
     }
-    // second click — the range is complete
+    // second click - the range is complete
     const from = anchor <= d ? anchor : d
     const to = anchor <= d ? d : anchor
     setDraft({ from, to })
     setAnchor(null)
     setHover(null)
-    // in the sheet there is no second confirm (the sheet has its own) — both
+    // in the sheet there is no second confirm (the sheet has its own) - both
     // ends picked means done; the popover waits for "Застосувати"
     if (sheet) {
       onChange({ from, to })
@@ -103,7 +103,7 @@ export function RangePanel({
     }
   }
 
-  // presets are quick picks — they commit and close right away, no confirm
+  // presets are quick picks - they commit and close right away, no confirm
   function applyPreset(from: Date, to: Date) {
     setDraft({ from, to })
     setAnchor(null)
@@ -119,7 +119,7 @@ export function RangePanel({
 
   return (
     <div className={cn(sheet ? "" : "flex")}>
-      {/* quick presets — the sheet offers these in its period select instead,
+      {/* quick presets - the sheet offers these in its period select instead,
           so there it's the calendar alone */}
       {!sheet && (
         <div className="flex w-40 shrink-0 flex-col gap-0.5 border-r p-2">

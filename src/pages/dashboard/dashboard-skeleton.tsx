@@ -50,7 +50,7 @@ export function KpiCardsSkeleton() {
   )
 }
 
-// bar heights (% of the plot area) — a plausible week, not the real numbers
+// bar heights (% of the plot area) - a plausible week, not the real numbers
 const BAR_HEIGHTS = [56, 64, 56, 73, 80, 48, 42]
 
 export function LeadsChartSkeleton() {
@@ -132,7 +132,7 @@ export function TopCallCentersSkeleton() {
   )
 }
 
-// метрики рядка: замовлення · сума продажу · % викупу · дохід (ROI — бейдж)
+// метрики рядка: замовлення · сума продажу · % викупу · дохід (ROI - бейдж)
 const PRODUCT_COLS = [38, 56, 34, 50]
 
 export function TopProductsSkeleton() {
@@ -168,7 +168,7 @@ export function TopProductsSkeleton() {
   )
 }
 
-// the data widgets only — reused for the short pulse after a date-range change
+// the data widgets only - reused for the short pulse after a date-range change
 export function DashboardWidgetsSkeleton() {
   return (
     <>
@@ -185,7 +185,7 @@ export function DashboardWidgetsSkeleton() {
   )
 }
 
-// full-page skeleton for the first load — mirrors the dashboard layout.
+// full-page skeleton for the first load - mirrors the dashboard layout.
 // the onboarding / no-plan callout is deliberately left out: it is static
 // chrome rather than loaded data, so it just appears once the data lands.
 export function DashboardSkeleton() {
