@@ -25,17 +25,90 @@ export const KPIS: Kpi[] = [
   { key: "roi", label: "ROI", value: "94%", delta: -4 },
 ]
 
-export type LeadsDay = { day: string; approved: number; raw: number }
+// funnel per day: leads >= approves >= buyout + returns
+export type LeadsDay = {
+  day: string
+  leads: number
+  approves: number
+  buyout: number
+  returns: number
+}
 
 export const LEADS_BY_DAY: LeadsDay[] = [
-  { day: "Пн", approved: 980, raw: 540 },
-  { day: "Вт", approved: 1120, raw: 610 },
-  { day: "Ср", approved: 1040, raw: 480 },
-  { day: "Чт", approved: 1290, raw: 700 },
-  { day: "Пт", approved: 1410, raw: 760 },
-  { day: "Сб", approved: 870, raw: 420 },
-  { day: "Нд", approved: 760, raw: 380 },
+  { day: "Пн", leads: 1080, approves: 496, buyout: 337, returns: 60 },
+  { day: "Вт", leads: 1240, approves: 570, buyout: 388, returns: 68 },
+  { day: "Ср", leads: 1160, approves: 532, buyout: 362, returns: 64 },
+  { day: "Чт", leads: 1430, approves: 656, buyout: 446, returns: 79 },
+  { day: "Пт", leads: 1560, approves: 716, buyout: 487, returns: 86 },
+  { day: "Сб", leads: 1010, approves: 464, buyout: 315, returns: 56 },
+  { day: "Нд", leads: 962, approves: 437, buyout: 297, returns: 52 },
 ]
+
+// ---- leads series per date range ----
+
+export const DATE_PRESETS = ["Сьогодні", "7 днів", "30 днів"] as const
+
+export type DatePreset = (typeof DATE_PRESETS)[number]
+
+export type LeadsPoint = {
+  label: string
+  leads: number
+  approves: number
+  buyout: number
+  returns: number
+}
+
+// deterministic pseudo-random, so the mock series does not jump on re-render
+function noise(i: number, seed: number) {
+  const x = Math.sin(i * 12.9898 + seed * 78.233) * 43758.5453
+  return x - Math.floor(x)
+}
+
+function buildLeads(
+  labels: string[],
+  base: number,
+  seed: number
+): LeadsPoint[] {
+  return labels.map((label, i) => {
+    const leads = Math.round(base * (0.7 + noise(i, seed) * 0.6))
+    const approves = Math.round(leads * (0.42 + noise(i, seed + 3) * 0.1))
+    const buyout = Math.round(approves * (0.6 + noise(i, seed + 7) * 0.16))
+    const returns = Math.round(approves * (0.09 + noise(i, seed + 11) * 0.05))
+    return { label, leads, approves, buyout, returns }
+  })
+}
+
+// 12 columns of two hours each - the last 24 hours in equal steps
+function hourLabels() {
+  const now = new Date()
+  return Array.from({ length: 12 }, (_, i) => {
+    const d = new Date(now)
+    d.setHours(d.getHours() - (11 - i) * 2, 0, 0, 0)
+    return `${String(d.getHours()).padStart(2, "0")}:00`
+  })
+}
+
+// 15 columns of two days each, ending today. The window can span two months,
+// so each label carries the month too.
+function dayLabels() {
+  const today = new Date()
+  return Array.from({ length: 15 }, (_, i) => {
+    const d = new Date(today)
+    d.setDate(d.getDate() - (14 - i) * 2)
+    return `${d.getDate()}.${String(d.getMonth() + 1).padStart(2, "0")}`
+  })
+}
+
+export function leadsFor(preset: DatePreset): LeadsPoint[] {
+  switch (preset) {
+    case "Сьогодні":
+      return buildLeads(hourLabels(), 140, 1)
+    case "30 днів":
+      return buildLeads(dayLabels(), 1180, 2)
+    default:
+      return LEADS_BY_DAY.map(({ day, ...rest }) => ({ label: day, ...rest }))
+  }
+}
 
 export type CallCenter = {
   name: string

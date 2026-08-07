@@ -39,7 +39,6 @@ import {
 import {
   ChartContainer,
   ChartTooltip,
-  ChartTooltipContent,
   type ChartConfig,
 } from "@/components/ui/chart"
 import {
@@ -71,12 +70,15 @@ import {
   avatarColor,
   BUYERS,
   CALL_CENTERS,
+  DATE_PRESETS,
   fmtMoney,
   fmtNum,
   KPIS,
-  LEADS_BY_DAY,
+  leadsFor,
   PRODUCTS,
+  type DatePreset,
   type KpiKey,
+  type LeadsPoint,
 } from "./data"
 
 const KPI_ICONS: Record<KpiKey, Icon> = {
@@ -247,29 +249,30 @@ function LockedOverlay({
   )
 }
 
-const DATE_PRESETS = ["Сьогодні", "7 днів", "30 днів", "Цей місяць"]
-
-function DateRangePicker({ onChange }: { onChange?: () => void }) {
-  const [dateRange, setDateRange] = useState(DATE_PRESETS[0])
-
+function DateRangePicker({
+  value,
+  onChange,
+}: {
+  value: DatePreset
+  onChange: (next: DatePreset) => void
+}) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
         render={
           <Button variant="secondary" className="gap-1.5">
             <IconCalendar className="size-4 text-muted-foreground" />
-            {dateRange}
+            {value}
             <IconChevronDown className="size-4 text-muted-foreground" />
           </Button>
         }
       />
       <DropdownMenuContent align="end">
         <DropdownMenuRadioGroup
-          value={dateRange}
-          onValueChange={(value) => {
-            if (value === dateRange) return
-            setDateRange(value)
-            onChange?.()
+          value={value}
+          onValueChange={(next) => {
+            if (next === value) return
+            onChange(next as DatePreset)
           }}
         >
           {DATE_PRESETS.map((p) => (
@@ -528,75 +531,185 @@ function KpiCards() {
   )
 }
 
-const LEADS_BY_DAY_WITH_TOTAL = LEADS_BY_DAY.map((d) => ({
-  ...d,
-  total: d.approved + d.raw,
-}))
-
+// The column is the whole funnel: its height is all leads of that day, cut into
+// the stage each lead ended up in. Only the two stage remainders are derived -
+// "leadsRest" are leads that never got an approve, "approvesRest" are approves
+// that are neither bought out nor returned yet.
 const chartConfig = {
-  approved: { label: "Апрув", color: "var(--primary)" },
-  raw: {
-    label: "Необроблені",
-    color: "color-mix(in oklab, var(--primary) 15%, var(--card))",
+  buyout: { label: "Викуп", color: "var(--primary)" },
+  returns: {
+    label: "Повернення",
+    color: "color-mix(in oklab, var(--destructive) 85%, var(--card))",
+  },
+  approvesRest: {
+    label: "Апрув",
+    color: "color-mix(in oklab, var(--primary) 50%, var(--card))",
+  },
+  leadsRest: {
+    label: "Ліди",
+    color: "color-mix(in oklab, var(--primary) 18%, var(--card))",
   },
 } satisfies ChartConfig
 
-function LeadsChart() {
+// bottom of the column first, so the legend reads the same way it stacks
+// (recharts' own legend sorts by dataKey, so it is rendered by hand below)
+const LEADS_LEGEND = ["buyout", "returns", "approvesRest", "leadsRest"] as const
+
+// the tooltip reads the funnel top-down, with the real stage totals rather than
+// the stacked remainders: ліди 1 080 (100%) -> апрув 496 (46%) -> викуп ...
+const TOOLTIP_ROWS = [
+  { key: "leadsRest", metric: "leads" },
+  { key: "approvesRest", metric: "approves" },
+  { key: "buyout", metric: "buyout" },
+  { key: "returns", metric: "returns" },
+] as const
+
+function LeadsLegend() {
+  return (
+    <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1.5 pt-3 text-xs text-muted-foreground">
+      {LEADS_LEGEND.map((key) => (
+        <span key={key} className="flex items-center gap-1.5">
+          <span
+            className="size-2 shrink-0 rounded-[2px]"
+            style={{ backgroundColor: chartConfig[key].color }}
+          />
+          {chartConfig[key].label}
+        </span>
+      ))}
+    </div>
+  )
+}
+
+function LeadsTooltip({
+  active,
+  payload,
+  label,
+}: {
+  active?: boolean
+  payload?: { payload: LeadsPoint }[]
+  label?: string
+}) {
+  if (!active || !payload?.length) return null
+  const point = payload[0].payload
+
+  return (
+    <div className="grid min-w-52 gap-1.5 rounded-lg border border-border/50 bg-background px-2.5 py-2 text-xs shadow-xl">
+      <div className="font-medium">{label}</div>
+      {TOOLTIP_ROWS.map(({ key, metric }) => {
+        const value = point[metric]
+        const share = point.leads ? Math.round((value / point.leads) * 100) : 0
+        return (
+          <div key={key} className="flex items-center gap-2">
+            <span
+              className="size-2.5 shrink-0 rounded-[2px]"
+              style={{ backgroundColor: chartConfig[key].color }}
+            />
+            <span className="text-muted-foreground">
+              {chartConfig[key].label}
+            </span>
+            <span className="ml-auto font-medium tabular-nums">
+              {fmtNum(value)}
+            </span>
+            <span className="w-9 text-right text-muted-foreground tabular-nums">
+              {share}%
+            </span>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+// the column is one shape: only the outer ends of the stack are rounded
+const TOP_RADIUS: [number, number, number, number] = [8, 8, 0, 0]
+const BOTTOM_RADIUS: [number, number, number, number] = [0, 0, 8, 8]
+
+function LeadsBars({ points }: { points: LeadsPoint[] }) {
+  // fewer, wider columns for a week; thinner ones as the range gets denser
+  const barSize =
+    points.length <= 7
+      ? 44
+      : points.length <= 10
+        ? 34
+        : points.length <= 12
+          ? 28
+          : 22
+  const data = points.map((p) => ({
+    ...p,
+    approvesRest: p.approves - p.buyout - p.returns,
+    leadsRest: p.leads - p.approves,
+  }))
+
+  return (
+    <>
+      <ChartContainer config={chartConfig} className="h-[252px] w-full">
+        <BarChart accessibilityLayer data={data} barSize={barSize}>
+          <XAxis
+            dataKey="label"
+            tickLine={false}
+            axisLine={false}
+            tickMargin={10}
+          />
+          <YAxis hide domain={[0, (max: number) => Math.ceil(max * 1.18)]} />
+          <ChartTooltip cursor={false} content={<LeadsTooltip />} />
+          <Bar
+            dataKey="buyout"
+            stackId="a"
+            fill="var(--color-buyout)"
+            radius={BOTTOM_RADIUS}
+            stroke="var(--card)"
+            strokeWidth={2}
+          />
+          <Bar
+            dataKey="returns"
+            stackId="a"
+            fill="var(--color-returns)"
+            stroke="var(--card)"
+            strokeWidth={2}
+          />
+          <Bar
+            dataKey="approvesRest"
+            stackId="a"
+            fill="var(--color-approvesRest)"
+            stroke="var(--card)"
+            strokeWidth={2}
+          />
+          <Bar
+            dataKey="leadsRest"
+            stackId="a"
+            fill="var(--color-leadsRest)"
+            radius={TOP_RADIUS}
+            stroke="var(--card)"
+            strokeWidth={2}
+          >
+            <LabelList
+              dataKey="leads"
+              position="top"
+              offset={10}
+              className="fill-foreground text-xs font-semibold"
+              formatter={(value) => fmtNum(Number(value))}
+            />
+          </Bar>
+        </BarChart>
+      </ChartContainer>
+      <LeadsLegend />
+    </>
+  )
+}
+
+function LeadsChart({ range }: { range: DatePreset }) {
   const { sources, noPlan } = useDataSources()
+  const points = leadsFor(range)
 
   if (noPlan || !sources.crm) {
     return (
       <Card className="relative gap-0 py-3.5 [--card-spacing:18px]">
         <CardHeader className={cn(headerClass, "pb-3.5")}>
-          <CardTitle className={titleClass}>Ліди за тиждень</CardTitle>
-          <CardDescription className={descClass}>
-            Підтверджені та необроблені
-          </CardDescription>
+          <CardTitle className={titleClass}>Ліди</CardTitle>
         </CardHeader>
         <CardContent className="relative flex h-[280px] flex-col pt-4">
           <div className="pointer-events-none opacity-80 blur-sm saturate-75 select-none">
-            <ChartContainer config={chartConfig} className="h-[280px] w-full">
-              <BarChart
-                accessibilityLayer
-                data={LEADS_BY_DAY_WITH_TOTAL}
-                barSize={48}
-              >
-                <XAxis
-                  dataKey="day"
-                  tickLine={false}
-                  axisLine={false}
-                  tickMargin={10}
-                />
-                <YAxis
-                  hide
-                  domain={[0, (max: number) => Math.ceil(max * 1.25)]}
-                />
-                <ChartTooltip
-                  cursor={false}
-                  content={<ChartTooltipContent />}
-                />
-                <Bar
-                  dataKey="approved"
-                  stackId="a"
-                  fill="var(--color-approved)"
-                  radius={[0, 0, 4, 4]}
-                />
-                <Bar
-                  dataKey="raw"
-                  stackId="a"
-                  fill="var(--color-raw)"
-                  radius={[8, 8, 0, 0]}
-                >
-                  <LabelList
-                    dataKey="total"
-                    position="top"
-                    offset={10}
-                    className="fill-foreground text-xs font-semibold"
-                    formatter={(value) => fmtNum(Number(value))}
-                  />
-                </Bar>
-              </BarChart>
-            </ChartContainer>
+            <LeadsBars points={points} />
           </div>
           <LockedOverlay
             noPlan={noPlan}
@@ -612,48 +725,10 @@ function LeadsChart() {
   return (
     <Card className="gap-0 py-3.5 [--card-spacing:18px]">
       <CardHeader className={cn(headerClass, "pb-3.5")}>
-        <CardTitle className={titleClass}>Ліди за тиждень</CardTitle>
-        <CardDescription className={descClass}>
-          Підтверджені та необроблені
-        </CardDescription>
+        <CardTitle className={titleClass}>Ліди</CardTitle>
       </CardHeader>
       <CardContent className="flex flex-1 flex-col justify-end pt-4">
-        <ChartContainer config={chartConfig} className="h-[280px] w-full">
-          <BarChart
-            accessibilityLayer
-            data={LEADS_BY_DAY_WITH_TOTAL}
-            barSize={48}
-          >
-            <XAxis
-              dataKey="day"
-              tickLine={false}
-              axisLine={false}
-              tickMargin={10}
-            />
-            <YAxis hide domain={[0, (max: number) => Math.ceil(max * 1.25)]} />
-            <ChartTooltip cursor={false} content={<ChartTooltipContent />} />
-            <Bar
-              dataKey="approved"
-              stackId="a"
-              fill="var(--color-approved)"
-              radius={[0, 0, 4, 4]}
-            />
-            <Bar
-              dataKey="raw"
-              stackId="a"
-              fill="var(--color-raw)"
-              radius={[8, 8, 0, 0]}
-            >
-              <LabelList
-                dataKey="total"
-                position="top"
-                offset={10}
-                className="fill-foreground text-xs font-semibold"
-                formatter={(value) => fmtNum(Number(value))}
-              />
-            </Bar>
-          </BarChart>
-        </ChartContainer>
+        <LeadsBars points={points} />
       </CardContent>
     </Card>
   )
@@ -1012,6 +1087,7 @@ function TopProducts() {
 
 export function DashboardPage() {
   const [showOnboarding, setShowOnboarding] = useState(true)
+  const [dateRange, setDateRange] = useState<DatePreset>(DATE_PRESETS[0])
   const { noPlan, loading } = useDataSources()
 
   // loading skeletons: a full-page one on first load, and a short pulse over
@@ -1048,7 +1124,13 @@ export function DashboardPage() {
       )}
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-bold tracking-tight">Огляд</h1>
-        <DateRangePicker onChange={() => pulse()} />
+        <DateRangePicker
+          value={dateRange}
+          onChange={(next) => {
+            setDateRange(next)
+            pulse()
+          }}
+        />
       </div>
       {reloading ? (
         <DashboardWidgetsSkeleton />
@@ -1056,7 +1138,7 @@ export function DashboardPage() {
         <>
           <KpiCards />
           <div className="grid gap-4 lg:grid-cols-[1.7fr_1fr]">
-            <LeadsChart />
+            <LeadsChart range={dateRange} />
             <TopBuyers />
           </div>
           <div className="grid gap-4 lg:grid-cols-[1fr_1.4fr]">
