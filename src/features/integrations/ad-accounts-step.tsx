@@ -153,8 +153,7 @@ export function AdAccountsStep({
             key={platform.name}
             className={cn(
               "rounded-lg border p-3.5",
-              animate &&
-                "animate-in duration-300 fade-in slide-in-from-right-8"
+              animate && "animate-in duration-300 fade-in slide-in-from-right-8"
             )}
             style={
               animate

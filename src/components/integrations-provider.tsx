@@ -9,7 +9,9 @@ import type {
 
 type IntegrationsContextValue = {
   connectedAccounts: ConnectedAdAccounts
-  setConnectedAccounts: React.Dispatch<React.SetStateAction<ConnectedAdAccounts>>
+  setConnectedAccounts: React.Dispatch<
+    React.SetStateAction<ConnectedAdAccounts>
+  >
   connectedCrms: ConnectedCrm[]
   setConnectedCrms: React.Dispatch<React.SetStateAction<ConnectedCrm[]>>
   callCenters: CallCenter[]
@@ -34,13 +36,33 @@ const IntegrationsContext = React.createContext<
   IntegrationsContextValue | undefined
 >(undefined)
 
+// Call centres used to hold a single office number; saves from back then are
+// lifted into the list shape rather than dropped, so a demo keeps its data.
+type StoredCallCenter = Omit<CallCenter, "offices"> & {
+  offices?: string[]
+  office?: string
+}
+
 function readStoredState(): StoredState {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (!raw) return DEFAULT_STATE
 
-    const parsed = JSON.parse(raw) as Partial<StoredState>
-    return { ...DEFAULT_STATE, ...parsed }
+    const parsed = JSON.parse(raw) as Partial<
+      Omit<StoredState, "callCenters">
+    > & {
+      callCenters?: StoredCallCenter[]
+    }
+    const storedCallCenters: StoredCallCenter[] = parsed.callCenters ?? []
+
+    return {
+      ...DEFAULT_STATE,
+      ...parsed,
+      callCenters: storedCallCenters.map(({ office, ...cc }) => ({
+        ...cc,
+        offices: cc.offices ?? (office ? [office] : []),
+      })),
+    }
   } catch {
     return DEFAULT_STATE
   }
@@ -90,7 +112,9 @@ export function useIntegrations() {
   const context = React.useContext(IntegrationsContext)
 
   if (context === undefined) {
-    throw new Error("useIntegrations must be used within an IntegrationsProvider")
+    throw new Error(
+      "useIntegrations must be used within an IntegrationsProvider"
+    )
   }
 
   return context

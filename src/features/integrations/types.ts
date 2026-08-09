@@ -310,7 +310,8 @@ export type UpsellFeeType = (typeof UPSELL_FEE_TYPES)[number]["value"]
 
 export type CallCenter = {
   name: string
-  office: string
+  /** office numbers - a call centre can serve more than one */
+  offices: string[]
   confirmedOrderPrice: string
   upsellFeeType: UpsellFeeType
   upsellFeePercent: string

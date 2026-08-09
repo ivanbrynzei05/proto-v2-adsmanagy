@@ -8,6 +8,7 @@ import {
   IconPlugConnected,
   IconSettings,
   IconSun,
+  IconUsers,
   IconWallet,
   type Icon,
 } from "@tabler/icons-react"
@@ -23,12 +24,19 @@ import { Input } from "@/components/ui/input"
 import { useSubscription } from "@/features/billing/subscription-context"
 import { CurrencyControls } from "@/features/currency/currency-controls"
 import { ExpensesSection } from "@/features/expenses/expenses-section"
+import { TeamSection } from "@/features/team/team-section"
 import { AdAccountsStep } from "@/features/integrations/ad-accounts-step"
 import { CrmStep } from "@/features/integrations/crm-step"
 import { SubscriptionManager } from "@/pages/subscription/subscription"
 import { cn } from "@/lib/utils"
 
-type SectionId = "general" | "sources" | "expenses" | "billing" | "plans"
+type SectionId =
+  | "general"
+  | "team"
+  | "sources"
+  | "expenses"
+  | "billing"
+  | "plans"
 
 const SECTIONS: {
   id: SectionId
@@ -36,6 +44,7 @@ const SECTIONS: {
   icon: Icon
 }[] = [
   { id: "general", label: "Загальне", icon: IconSettings },
+  { id: "team", label: "Команда", icon: IconUsers },
   { id: "sources", label: "Інтеграції", icon: IconPlugConnected },
   { id: "expenses", label: "Витрати", icon: IconCoins },
   { id: "plans", label: "Підписка", icon: IconCreditCard },
@@ -47,9 +56,11 @@ const SECTIONS: {
 // older `?section=sources` links keep working.
 function sectionFromParam(value: string | null): SectionId {
   if (value === "integrations") return "sources"
+  if (value === "users") return "team"
   if (
     value === "sources" ||
     value === "general" ||
+    value === "team" ||
     value === "expenses" ||
     value === "billing" ||
     value === "plans"
@@ -340,6 +351,7 @@ export function SettingsPage() {
 
         <div className="min-w-0">
           {active === "general" && <GeneralSection />}
+          {active === "team" && <TeamSection />}
           {active === "sources" && <SourcesSection />}
           {active === "expenses" && <ExpensesSection />}
           {active === "plans" && <SubscriptionManager />}

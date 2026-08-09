@@ -18,6 +18,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
+import { OfficeChips } from "@/components/ui/office-chips"
 import { cn } from "@/lib/utils"
 import {
   UPSELL_FEE_TYPES,
@@ -36,14 +37,14 @@ function AddCallCenterDialog({
   onAdd: (callCenter: CallCenter) => void
 }) {
   const [name, setName] = useState("")
-  const [office, setOffice] = useState("")
+  const [offices, setOffices] = useState<string[]>([])
   const [confirmedOrderPrice, setConfirmedOrderPrice] = useState("")
   const [upsellFeeType, setUpsellFeeType] = useState<UpsellFeeType>("sum")
   const [upsellFeePercent, setUpsellFeePercent] = useState("")
 
   const reset = () => {
     setName("")
-    setOffice("")
+    setOffices([])
     setConfirmedOrderPrice("")
     setUpsellFeeType("sum")
     setUpsellFeePercent("")
@@ -51,7 +52,7 @@ function AddCallCenterDialog({
 
   const canSubmit =
     name.trim() !== "" &&
-    office.trim() !== "" &&
+    offices.length > 0 &&
     confirmedOrderPrice.trim() !== "" &&
     upsellFeePercent.trim() !== ""
 
@@ -86,14 +87,9 @@ function AddCallCenterDialog({
           </div>
           <div className="flex flex-col gap-1.5">
             <label className="text-xs font-medium text-muted-foreground">
-              Офіс
+              Офіси
             </label>
-            <Input
-              value={office}
-              onChange={(e) => setOffice(e.target.value.replace(/\D/g, ""))}
-              placeholder="Номер офісу"
-              inputMode="numeric"
-            />
+            <OfficeChips value={offices} onChange={setOffices} />
           </div>
           <div className="flex flex-col gap-1.5">
             <label className="text-xs font-medium text-muted-foreground">
@@ -166,7 +162,7 @@ function AddCallCenterDialog({
             onClick={() => {
               onAdd({
                 name: name.trim(),
-                office: office.trim(),
+                offices,
                 confirmedOrderPrice: confirmedOrderPrice.trim(),
                 upsellFeeType,
                 upsellFeePercent: upsellFeePercent.trim(),
@@ -271,14 +267,17 @@ export function CallCentersStep({
                     <IconHeadset className="size-4" />
                   </div>
                   <div>
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex flex-wrap items-center gap-1.5">
                       <p className="text-sm font-semibold">{cc.name}</p>
-                      <Badge
-                        variant="outline"
-                        className="text-muted-foreground"
-                      >
-                        Офіс {cc.office}
-                      </Badge>
+                      {cc.offices.map((office) => (
+                        <Badge
+                          key={office}
+                          variant="outline"
+                          className="text-muted-foreground"
+                        >
+                          Офіс {office}
+                        </Badge>
+                      ))}
                     </div>
                     <p className="text-xs text-muted-foreground">
                       ₴{cc.confirmedOrderPrice} за заказ · {cc.upsellFeePercent}

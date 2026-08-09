@@ -6,6 +6,7 @@ import { CurrencyProvider } from "@/components/currency-provider"
 import { DataSourcesProvider } from "@/components/data-sources-provider"
 import { ExpensesProvider } from "@/components/expenses-provider"
 import { IntegrationsProvider } from "@/components/integrations-provider"
+import { TeamProvider } from "@/components/team-provider"
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { SubscriptionProvider } from "@/features/billing/subscription-context"
@@ -37,24 +38,26 @@ export function App() {
           <ExpensesProvider>
             <CurrencyProvider>
               <SubscriptionProvider>
-                <Routes>
-                  <Route element={<AppLayout />}>
-                    <Route path="/" element={<DashboardPage />} />
-                    <Route path="/campaigns" element={<CampaignsPage />} />
-                    <Route path="/settings" element={<SettingsPage />} />
-                    <Route path="/help/faq" element={<FaqPage />} />
+                <TeamProvider>
+                  <Routes>
+                    <Route element={<AppLayout />}>
+                      <Route path="/" element={<DashboardPage />} />
+                      <Route path="/campaigns" element={<CampaignsPage />} />
+                      <Route path="/settings" element={<SettingsPage />} />
+                      <Route path="/help/faq" element={<FaqPage />} />
+                      <Route
+                        path="/legal/privacy"
+                        element={<PrivacyPolicyPage />}
+                      />
+                    </Route>
+                    <Route path="/onboarding" element={<OnboardingPage />} />
                     <Route
-                      path="/legal/privacy"
-                      element={<PrivacyPolicyPage />}
+                      path="/connect/ads/:token"
+                      element={<ConnectAdsPage />}
                     />
-                  </Route>
-                  <Route path="/onboarding" element={<OnboardingPage />} />
-                  <Route
-                    path="/connect/ads/:token"
-                    element={<ConnectAdsPage />}
-                  />
-                  <Route path="*" element={<Navigate to="/" replace />} />
-                </Routes>
+                    <Route path="*" element={<Navigate to="/" replace />} />
+                  </Routes>
+                </TeamProvider>
               </SubscriptionProvider>
             </CurrencyProvider>
           </ExpensesProvider>
