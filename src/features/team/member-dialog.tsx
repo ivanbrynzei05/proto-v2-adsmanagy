@@ -43,7 +43,12 @@ export type MemberDraft = {
   role: TeamRole
   offices: string[]
   salaryPercent: string
+  /** buyers only - undefined means the buyer answers to the owner directly */
+  leadId?: string
 }
+
+// A buyer can be left unattached, so the select needs a value for "no lead".
+const NO_LEAD = "none"
 
 function Field({
   label,
@@ -175,6 +180,8 @@ type MemberFormProps = {
   defaultRole?: TeamRole
   /** roles that can be assigned */
   allowedRoles: TeamRole[]
+  /** team leads a buyer can be attached to */
+  leads: TeamMember[]
   /** emails already in the team, lowercased */
   takenEmails: string[]
   onCancel: () => void
@@ -187,6 +194,7 @@ function MemberForm({
   member,
   defaultRole,
   allowedRoles,
+  leads,
   takenEmails,
   onCancel,
   onSubmit,
@@ -202,6 +210,7 @@ function MemberForm({
   const [salaryPercent, setSalaryPercent] = useState(
     member?.salaryPercent ?? ""
   )
+  const [leadId, setLeadId] = useState(member?.leadId ?? NO_LEAD)
   const [password, setPassword] = useState(() =>
     member ? "" : generatePassword()
   )
@@ -210,6 +219,7 @@ function MemberForm({
     (r) => allowedRoles.includes(r.value) || r.value === member?.role
   )
   const showRolePicker = roleOptions.length > 1
+  const isBuyer = role === "buyer"
 
   const normalizedEmail = email.trim().toLowerCase()
   const emailTaken = takenEmails.includes(normalizedEmail)
@@ -251,6 +261,8 @@ function MemberForm({
       role,
       offices,
       salaryPercent: salaryPercent.trim().replace(",", "."),
+      // a lead only makes sense for a buyer, and clears when the role changes
+      leadId: isBuyer && leadId !== NO_LEAD ? leadId : undefined,
     })
   }
 
@@ -289,7 +301,7 @@ function MemberForm({
           <Input
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="Наприклад, Олег Кравець"
+            placeholder="Вкажіть імʼя та прізвище"
           />
         </Field>
 
@@ -298,7 +310,7 @@ function MemberForm({
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            placeholder="name@company.com"
+            placeholder="Вкажіть робочу пошту"
             autoComplete="off"
             aria-invalid={emailError !== null}
           />
@@ -332,6 +344,31 @@ function MemberForm({
             </span>
           </div>
         </Field>
+
+        {isBuyer && leads.length > 0 && (
+          <Field label="Тімлід">
+            <Select
+              value={leadId}
+              onValueChange={(v) => setLeadId(v as string)}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue>
+                  {(v: string) =>
+                    leads.find((l) => l.id === v)?.name ?? "Без тімліда"
+                  }
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NO_LEAD}>Без тімліда</SelectItem>
+                {leads.map((lead) => (
+                  <SelectItem key={lead.id} value={lead.id}>
+                    {lead.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+        )}
       </div>
 
       <DialogFooter className="sm:justify-end">

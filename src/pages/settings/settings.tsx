@@ -44,9 +44,9 @@ const SECTIONS: {
   icon: Icon
 }[] = [
   { id: "general", label: "Загальне", icon: IconSettings },
-  { id: "team", label: "Команда", icon: IconUsers },
   { id: "sources", label: "Інтеграції", icon: IconPlugConnected },
   { id: "expenses", label: "Витрати", icon: IconCoins },
+  { id: "team", label: "Команда", icon: IconUsers },
   { id: "plans", label: "Підписка", icon: IconCreditCard },
   { id: "billing", label: "Баланс", icon: IconWallet },
 ]

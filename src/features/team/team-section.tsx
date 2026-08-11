@@ -99,6 +99,7 @@ export function TeamSection() {
   const plan = planById(state.planId)
   const seatLimit = (plan?.limits.members ?? 0) + (state.addons.members ?? 0)
   const atLimit = members.length >= seatLimit
+  const leads = members.filter((m) => m.role === "teamlead")
 
   const openAdd = (role: TeamRole) => {
     setDialogTarget({ role })
@@ -211,6 +212,7 @@ export function TeamSection() {
             <TableBody>
               {members.map((member) => {
                 const info = roleInfo(member.role)
+                const lead = members.find((m) => m.id === member.leadId)
                 return (
                   <TableRow key={member.id}>
                     <TableCell className="px-3 py-2.5">
@@ -235,6 +237,11 @@ export function TeamSection() {
                         <info.icon className="size-4 text-muted-foreground" />
                         {info.label}
                       </span>
+                      {lead && (
+                        <p className="mt-0.5 text-[11px] text-muted-foreground">
+                          Тімлід: {lead.name}
+                        </p>
+                      )}
                     </TableCell>
                     <TableCell className="px-3 py-2.5">
                       {member.offices.length > 0 ? (
@@ -301,6 +308,7 @@ export function TeamSection() {
         member={dialogTarget.member}
         defaultRole={dialogTarget.role}
         allowedRoles={INVITABLE_ROLES}
+        leads={leads}
         takenEmails={members
           .filter((m) => m.id !== dialogTarget.member?.id)
           .map((m) => m.email.toLowerCase())}
@@ -319,7 +327,7 @@ export function TeamSection() {
             <DialogTitle>Видалити користувача?</DialogTitle>
             <DialogDescription>
               {memberToRemove &&
-                `${memberToRemove.name} втратить доступ до кабінету, а місце за тарифом звільниться`}
+                `${memberToRemove.name} втратить доступ до кабінету, а всі дані цього користувача будуть видалені. `}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="sm:justify-end">
@@ -331,7 +339,14 @@ export function TeamSection() {
               onClick={() => {
                 if (!memberToRemove) return
                 setMembers((prev) =>
-                  prev.filter((m) => m.id !== memberToRemove.id)
+                  prev
+                    .filter((m) => m.id !== memberToRemove.id)
+                    // buyers of a removed lead stay, just without one
+                    .map((m) =>
+                      m.leadId === memberToRemove.id
+                        ? { ...m, leadId: undefined }
+                        : m
+                    )
                 )
                 setMemberToRemove(null)
               }}

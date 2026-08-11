@@ -60,6 +60,7 @@ export const TEAM_ROLES: RoleInfo[] = [
       "Додавати рекламні акаунти",
       "Переглядати свої кампанії та свій дохід за відсотком",
       "Без доступу до чужої статистики й налаштувань",
+      "Не може змінювати CRM системи та витрати",
     ],
     canInvite: [],
   },
@@ -82,6 +83,8 @@ export type TeamMember = {
   salaryPercent: string
   /** buyers only - ad accounts they run, assigned in Інтеграції */
   adAccounts: string
+  /** buyers only - the team lead they work under, if any */
+  leadId?: string
 }
 
 export const DEFAULT_MEMBERS: TeamMember[] = [
@@ -102,6 +105,7 @@ export const DEFAULT_MEMBERS: TeamMember[] = [
     offices: ["1"],
     salaryPercent: "30",
     adAccounts: "6",
+    leadId: "lead-1",
   },
   {
     id: "buyer-2",
@@ -111,6 +115,7 @@ export const DEFAULT_MEMBERS: TeamMember[] = [
     offices: ["2"],
     salaryPercent: "25",
     adAccounts: "4",
+    leadId: "lead-1",
   },
 ]
 
