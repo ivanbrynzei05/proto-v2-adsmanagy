@@ -28,8 +28,10 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
+import { CrmLogo } from "@/features/integrations/logos"
+import { type CrmType } from "@/features/integrations/types"
 import { cn } from "@/lib/utils"
-import { plural, PRODUCTS, searchProducts, type ProductPage } from "./data"
+import { PRODUCTS, searchProducts, type ProductPage } from "./data"
 
 // The campaign the dialog is editing, plus the product currently tied to it.
 export type ProductTarget = {
@@ -49,11 +51,17 @@ function productName(id: string) {
   return PRODUCTS[id] ?? "Товар " + id
 }
 
-// "3 кампанії" / "без кампаній" - the line under every product name.
-function campaignsNote(n: number) {
-  return n
-    ? n + " " + plural(n, "кампанія", "кампанії", "кампаній")
-    : "без кампаній"
+// The catalogue is the connected CRM's, so its rows carry its mark - the one
+// shown in Інтеграції, at the size of the line it sits on.
+const CATALOGUE_CRM: CrmType = "LP CRM"
+
+function CrmSource() {
+  return (
+    <span className="flex h-4 min-w-0 items-center gap-1 text-[11px] leading-4 text-muted-foreground">
+      <CrmLogo type={CATALOGUE_CRM} className="size-3.5" />
+      <span className="truncate">{CATALOGUE_CRM}</span>
+    </span>
+  )
 }
 
 // A named block of the dialog - what the campaign has now, and what it can be
@@ -86,26 +94,26 @@ function Section({
 }
 
 // The identity of a product wherever it is shown: an icon disc, the name with
-// its campaign count underneath, and the id as a chip on the right. The id is
-// what a campaign is actually linked by, so it gets the same #id chip the table
-// carries instead of hiding inside the grey line - and the chips line up in one
-// column, which is how the list is scanned. Selecting turns the disc into a
-// check, so the picked state never crowds the chip.
+// the system it came from underneath, and the id as a chip on the right. The id
+// is what a campaign is actually linked by, so it gets the same #id chip the
+// table carries instead of hiding inside the grey line - and the chips line up
+// in one column, which is how the list is scanned. Selecting turns the disc into
+// a check, so the picked state never crowds the chip.
 function ProductFace({
   id,
   name,
-  note,
   picked,
   isNew = false,
 }: {
   id: string
   name: string
-  /** campaign count under the name; omitted on a row that has nothing to count */
-  note?: string
   picked: boolean
   /** an id typed into the search box that the catalogue doesn't know */
   isNew?: boolean
 }) {
+  // only what the catalogue answered with can claim to come from the CRM - an id
+  // attached by hand is exactly the case where it hasn't reached it yet
+  const fromCatalogue = PRODUCTS[id] !== undefined
   return (
     <>
       <span
@@ -126,14 +134,10 @@ function ProductFace({
       </span>
       <span className="flex min-w-0 flex-1 flex-col">
         <span className="truncate text-sm font-medium">{name}</span>
-        {note && (
-          // leading pinned rather than inherited: the pending rows copy these
-          // two line boxes exactly, and a row that changes height when the
-          // answer arrives makes the whole list jump
-          <span className="truncate text-[11px] leading-4 text-muted-foreground">
-            {note}
-          </span>
-        )}
+        {/* the line box is pinned rather than inherited: the pending rows copy
+            these two exactly, and a row that changes height when the answer
+            arrives makes the whole list jump */}
+        {fromCatalogue && <CrmSource />}
       </span>
       <Badge
         variant="secondary"
@@ -159,13 +163,11 @@ function ProductFace({
 // Скасувати brings the product back.
 function CurrentProduct({
   id,
-  note,
   picked,
   onPick,
   onDetach,
 }: {
   id: string
-  note: string
   /** the card is the pending choice - i.e. nothing else is selected */
   picked: boolean
   onPick: () => void
@@ -183,12 +185,7 @@ function CurrentProduct({
         onClick={onPick}
         className="flex min-w-0 flex-1 items-center gap-2.5 rounded-md px-1.5 py-1 text-left"
       >
-        <ProductFace
-          id={id}
-          name={productName(id)}
-          note={note}
-          picked={picked}
-        />
+        <ProductFace id={id} name={productName(id)} picked={picked} />
       </button>
       <Button
         variant="ghost"
@@ -208,7 +205,6 @@ function CurrentProduct({
 function ProductRow({
   id,
   name,
-  note,
   picked,
   isNew = false,
   onPick,
@@ -216,7 +212,6 @@ function ProductRow({
 }: {
   id: string
   name: string
-  note?: string
   picked: boolean
   isNew?: boolean
   onPick: () => void
@@ -237,13 +232,7 @@ function ProductRow({
             )
       )}
     >
-      <ProductFace
-        id={id}
-        name={name}
-        note={note}
-        picked={picked}
-        isNew={isNew}
-      />
+      <ProductFace id={id} name={name} picked={picked} isNew={isNew} />
     </button>
   )
 }
@@ -368,12 +357,10 @@ function NamingTip() {
 // clean search box with the campaign's own product preselected.
 function ProductPickerForm({
   target,
-  counts,
   onCancel,
   onSave,
 }: {
   target: ProductTarget
-  counts: Record<string, number>
   onCancel: () => void
   onSave: (productId: string | null) => void
 }) {
@@ -487,7 +474,6 @@ function ProductPickerForm({
         <Section title="Поточний товар">
           <CurrentProduct
             id={current}
-            note={campaignsNote(counts[current] ?? 0)}
             picked={picked === current}
             onPick={() => setPicked(current)}
             onDetach={() => setPicked(null)}
@@ -556,7 +542,6 @@ function ProductPickerForm({
                   key={p.id}
                   id={p.id}
                   name={p.name}
-                  note={campaignsNote(counts[p.id] ?? 0)}
                   picked={p.id === picked}
                   onPick={() => setPicked(p.id)}
                   onCommit={() => onSave(p.id)}
@@ -625,15 +610,12 @@ function ProductPickerForm({
 export function ProductPickerDialog({
   open,
   target,
-  counts,
   onOpenChange,
   onSave,
 }: {
   open: boolean
   /** the campaign being edited - kept around while the dialog animates out */
   target: ProductTarget | null
-  /** how many campaigns each product currently holds */
-  counts: Record<string, number>
   onOpenChange: (open: boolean) => void
   /** productId=null detaches the product from the campaign */
   onSave: (key: string, productId: string | null) => void
@@ -644,7 +626,6 @@ export function ProductPickerDialog({
         {target && (
           <ProductPickerForm
             target={target}
-            counts={counts}
             onCancel={() => onOpenChange(false)}
             onSave={(productId) => {
               onSave(target.key, productId)

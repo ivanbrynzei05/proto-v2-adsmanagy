@@ -789,15 +789,6 @@ export function CampaignsPage() {
     })
     setPickerOpen(true)
   }
-  // campaigns per product - the quiet "3 кампанії" hint on the picker rows
-  const productCounts = useMemo(() => {
-    const m: Record<string, number> = {}
-    for (const c of CAMPAIGNS) {
-      const id = productIdFor(productLinks, "Кампанії", c.name)
-      if (id) m[id] = (m[id] ?? 0) + 1
-    }
-    return m
-  }, [productLinks])
   function saveProductLink(key: string, productId: string | null) {
     setProductLinks((m) => ({ ...m, [key]: productId }))
     // open the shelf the campaign just joined, so the move is visible
@@ -2470,7 +2461,6 @@ export function CampaignsPage() {
       <ProductPickerDialog
         open={pickerOpen}
         target={pickerTarget}
-        counts={productCounts}
         onOpenChange={setPickerOpen}
         onSave={saveProductLink}
       />

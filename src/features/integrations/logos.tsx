@@ -1,3 +1,48 @@
+import lpCrmLogo from "@/assets/lp-crm.png"
+import { cn } from "@/lib/utils"
+
+import { CRM_LOGO_COLORS, CRM_LOGO_LETTERS, type CrmType } from "./types"
+
+// The mark of a CRM system: the real logo where there is one, a lettered tile in
+// the brand colour where there isn't. Sized by the caller - it is used at 36px in
+// Інтеграції and at 14px on the product rows of the picker.
+export function CrmLogo({
+  type,
+  className,
+}: {
+  type: CrmType
+  className?: string
+}) {
+  if (type === "LP CRM") {
+    return (
+      <div
+        className={cn(
+          "flex shrink-0 items-center justify-center overflow-hidden rounded-md",
+          className
+        )}
+      >
+        <img
+          src={lpCrmLogo}
+          alt="LP CRM"
+          className="h-full w-full object-contain"
+        />
+      </div>
+    )
+  }
+
+  return (
+    <div
+      className={cn(
+        "flex shrink-0 items-center justify-center rounded-md font-bold text-white",
+        className
+      )}
+      style={{ backgroundColor: CRM_LOGO_COLORS[type] }}
+    >
+      {CRM_LOGO_LETTERS[type]}
+    </div>
+  )
+}
+
 export function FacebookLogo({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" className={className}>

@@ -20,7 +20,6 @@ import {
   type SetStateAction,
 } from "react"
 
-import lpCrmLogo from "@/assets/lp-crm.png"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -50,10 +49,9 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
+import { CrmLogo } from "./logos"
 import {
   autoMatchStatus,
-  CRM_LOGO_COLORS,
-  CRM_LOGO_LETTERS,
   CRM_STATUS_CATEGORIES,
   CRM_STATUS_IGNORE,
   CRM_TYPES,
@@ -181,37 +179,6 @@ function ScrollBox({
           />
         </div>
       )}
-    </div>
-  )
-}
-
-function CrmLogo({ type, className }: { type: CrmType; className?: string }) {
-  if (type === "LP CRM") {
-    return (
-      <div
-        className={cn(
-          "flex shrink-0 items-center justify-center overflow-hidden rounded-md",
-          className
-        )}
-      >
-        <img
-          src={lpCrmLogo}
-          alt="LP CRM"
-          className="h-full w-full object-contain"
-        />
-      </div>
-    )
-  }
-
-  return (
-    <div
-      className={cn(
-        "flex shrink-0 items-center justify-center rounded-md font-bold text-white",
-        className
-      )}
-      style={{ backgroundColor: CRM_LOGO_COLORS[type] }}
-    >
-      {CRM_LOGO_LETTERS[type]}
     </div>
   )
 }
