@@ -132,8 +132,9 @@ type RawCampaign = {
 }
 
 // Product catalogue: a campaign whose name starts with one of these ids can be
-// grouped and broken down by product. Names without an id can't be tied to a
-// product, so the table warns about them instead of grouping them.
+// grouped and broken down by product. A campaign whose name has no id can still
+// be tied to a product by hand (the "прикріпити товар" dialog); until it is, the
+// table warns about it instead of grouping it.
 export const PRODUCTS: Record<string, string> = {
   "1042": "Масажер для шиї Neck Relax",
   "2087": "Робот-пилосос CleanMax X9",
@@ -143,6 +144,69 @@ export const PRODUCTS: Record<string, string> = {
   "6033": "Набір кухонних ножів SharpEdge",
   "7008": "Електросушарка для взуття DryStep",
   "8102": "Органайзер для авто CarTidy",
+  // in the catalogue but with no campaigns of their own yet - these are what
+  // the picker offers for campaigns that carry no id in the name
+  "9014": "Масажний пістолет PulseGun",
+  "9210": "Зволожувач повітря AromaMist",
+  "9355": "Портативний блендер FreshMix",
+  "9412": "Лампа для манікюру GelPro",
+  "9508": "Бездротові навушники SoundPods",
+  "9640": "Крапельна кавоварка BrewGo",
+}
+
+// the catalogue as a list, ready for the product search dialog
+export const PRODUCT_LIST: { id: string; name: string }[] = Object.entries(
+  PRODUCTS
+).map(([id, name]) => ({ id, name }))
+
+export type ProductPage = {
+  items: { id: string; name: string }[]
+  /** matches for the whole query, not just the ones on this page */
+  total: number
+}
+
+// The picker's search endpoint. In production the catalogue lives in the CRM -
+// it is far bigger than anything worth shipping to the browser and it changes
+// during the day - so every keystroke is a round trip, and the server decides
+// which slice comes back. Here that trip is served from PRODUCT_LIST behind a
+// delay, so the dialog has to handle what the network really hands it: a
+// pending page, and an older answer that can land after a newer one.
+export function searchProducts({
+  query,
+  page,
+  perPage,
+  exclude,
+}: {
+  query: string
+  /** zero-based */
+  page: number
+  perPage: number
+  /** the campaign's own product - pinned in the dialog, so never listed */
+  exclude?: string | null
+}): Promise<ProductPage> {
+  const q = query.trim().replace(/^#/, "").toLowerCase()
+  const hits = PRODUCT_LIST.filter(
+    (p) =>
+      p.id !== exclude &&
+      (!q || p.id.includes(q) || p.name.toLowerCase().includes(q))
+  )
+  const from = page * perPage
+  const result = { items: hits.slice(from, from + perPage), total: hits.length }
+  // 180-460ms - quick enough not to be in the way, slow enough that the pending
+  // state is actually seen while typing
+  const latency = 180 + Math.random() * 280
+  return new Promise((resolve) =>
+    window.setTimeout(() => resolve(result), latency)
+  )
+}
+
+// Ukrainian plural picker (1 кампанія / 2 кампанії / 5 кампаній)
+export function plural(n: number, one: string, few: string, many: string) {
+  const m10 = n % 10
+  const m100 = n % 100
+  if (m10 === 1 && m100 !== 11) return one
+  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return few
+  return many
 }
 
 // Pulls the leading product id out of a campaign name, e.g.

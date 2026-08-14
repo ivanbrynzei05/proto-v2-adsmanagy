@@ -18,12 +18,15 @@ import {
   IconLayoutGrid,
   IconLock,
   IconPackage,
+  IconPencil,
   IconPlugConnectedX,
+  IconPlus,
   IconRefresh,
   IconSearch,
   IconSpeakerphone,
   IconStack2,
   IconTag,
+  IconUser,
   IconWorld,
   IconX,
   type Icon as TablerIcon,
@@ -32,6 +35,7 @@ import { Fragment, useEffect, useMemo, useRef, useState } from "react"
 
 import { useCurrency } from "@/components/currency-provider"
 import { useDataSources } from "@/components/data-sources-provider"
+import { useTeam } from "@/components/team-provider"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
@@ -67,6 +71,7 @@ import {
 } from "@/components/ui/tooltip"
 import { PricingDialog } from "@/features/billing/pricing-dialog"
 import type { DisplayCurrency } from "@/features/currency/types"
+import type { TeamMember } from "@/features/team/types"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { cn } from "@/lib/utils"
 import {
@@ -80,6 +85,7 @@ import {
   fmt,
   parseProductId,
   PLATFORMS,
+  plural,
   PRESETS,
   PRODUCTS,
   totals,
@@ -93,6 +99,7 @@ import { DateRangePicker } from "./date-range"
 import { addDays, rangeLabel, startOfDay, type DateRange } from "./date-utils"
 import { CampaignFiltersSheet } from "./filters-sheet"
 import { PlatformBadge } from "./platform-badge"
+import { ProductPickerDialog, type ProductTarget } from "./product-picker"
 
 // ---- single metric cell: pill / mini-bar / plain number ----
 // accepts a full Row or an aggregated { metric: value } map (product-group total)
@@ -173,12 +180,27 @@ const ENTITY_SHORT: Record<string, string> = {
   Оголошення: "Оголошення",
 }
 // Synthetic per-level identifier shown under the name: a campaign id on the
-// campaign level, an ad-group id on groups, an ad id on ads. Each level uses a
-// distinct base/length so the ids read as belonging to that level.
+// campaign level, an ad-group id on groups, an ad id on ads. Ad-platform ids are
+// long, so a campaign carries 12 digits; each level stays a couple of digits
+// longer than the one above it, so the ids read as belonging to that level.
 function entityId(entity: string, i: number): number {
-  if (entity === "Групи оголошень") return 623400100 + i * 17
-  if (entity === "Оголошення") return 890120045000 + i * 23
-  return 481200 + i * 6 // Кампанії
+  if (entity === "Групи оголошень") return 62340010023400 + i * 17
+  if (entity === "Оголошення") return 7890120045000230 + i * 23
+  return 481200734100 + i * 6 // Кампанії
+}
+
+// Who created the row. The demo data carries no author, so a stable hash of the
+// campaign name picks one of the team's buyers (any member when the team has no
+// buyer). Ad groups and ads hash their parent campaign, so everything under one
+// campaign shows the same person.
+function authorOf(members: TeamMember[], c: Row): TeamMember | null {
+  const buyers = members.filter((m) => m.role === "buyer")
+  const pool = buyers.length ? buyers : members
+  if (!pool.length) return null
+  const key = c.campaign ?? c.name
+  let h = 0
+  for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) >>> 0
+  return pool[h % pool.length]
 }
 const RATE_KEYS: MetricKey[] = [
   "costPerLead",
@@ -252,38 +274,141 @@ const CHILD_BG =
 const CHILD_FROZEN =
   "bg-[color-mix(in_oklab,var(--muted)_28%,var(--card))] group-hover/row:bg-[color-mix(in_oklab,var(--muted)_45%,var(--card))]"
 
-// Ukrainian plural picker (1 кампанія / 2 кампанії / 5 кампаній)
-function plural(n: number, one: string, few: string, many: string) {
-  const m10 = n % 10
-  const m100 = n % 100
-  if (m10 === 1 && m100 !== 11) return one
-  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return few
-  return many
+// ---- manual product links ----
+// A campaign is tied to a product by the id its name starts with. That id can be
+// overridden by hand: the user attaches a product to a campaign whose name has
+// none, swaps it, or detaches it. Links live in one map keyed by entity + name;
+// a missing key means "whatever the name says".
+type ProductLinks = Record<string, string | null>
+
+function linkKey(entity: string, name: string) {
+  return entity + ":" + name
+}
+// the product a row belongs to - a manual link wins over the id in the name,
+// and null means the row has no product at all
+function productIdFor(
+  links: ProductLinks,
+  entity: string,
+  name: string
+): string | null {
+  const k = linkKey(entity, name)
+  return k in links ? links[k] : parseProductId(name).id
 }
 
-// amber warning shown next to campaigns with no product id in the name; the
-// compact variant sits on the row subline, where the phone puts it instead
-function NoProductWarning({ compact = false }: { compact?: boolean }) {
-  return (
-    <Tooltip>
-      <TooltipTrigger
+// Shelf title for a product id: the catalogue name, or - for an id typed into
+// the picker that the catalogue doesn't know yet - the campaign's own name when
+// the id came from it, and a plain "Товар #id" when it didn't.
+function productLabel(id: string, sampleName: string) {
+  if (PRODUCTS[id]) return PRODUCTS[id]
+  const parsed = parseProductId(sampleName)
+  return parsed.id === id ? parsed.rest : "Товар " + id
+}
+
+// The action icon trailing the product chip - a pencil on a chip that holds a
+// product, a plus on the empty slot. Always visible, so the row never hides what
+// can be done to it; hovering the row just brings it up to full strength.
+const CHIP_ACTION = "size-3.5 shrink-0 opacity-60 group-hover/row:opacity-100"
+
+// The product marker every row carries: the #id chip when the row has a product
+// (same chip as the product shelves), a dashed "Прикріпити товар" slot when it
+// has none. On campaigns the marker is also the button that opens the picker,
+// with a pencil / plus trailing the label. Ad groups / ads only ever show it
+// read-only: products are attached to campaigns, deeper levels inherit them.
+function ProductControl({
+  productId,
+  onEdit,
+  compact = false,
+}: {
+  /** product in effect, null when the row has none */
+  productId: string | null
+  /** omitted where the link can't be edited (ad groups / ads) */
+  onEdit?: () => void
+  /** phone layout - shorter label, smaller hit area */
+  compact?: boolean
+}) {
+  const productName = productId
+    ? (PRODUCTS[productId] ?? "Товар " + productId)
+    : null
+
+  if (productId === null) {
+    // An empty slot, not an alarm: the missing product is already flagged once
+    // in the strip above the table, so the row only has to offer the fix. The
+    // dashed chip reads as "something goes here" and invites the click.
+    const cls = cn(
+      "shrink-0 gap-1 border-dashed border-border/80 bg-transparent font-normal text-muted-foreground",
+      compact && "h-4 px-1.5 text-[10px]",
+      onEdit &&
+        "cursor-pointer hover:border-primary/40 hover:bg-primary/8 hover:text-primary"
+    )
+    if (!onEdit) {
+      // ad groups / ads - nothing to click here, so it stays an explanation
+      return (
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Badge variant="outline" className={cls}>
+                <IconTag className="size-3" />
+                Без товару
+              </Badge>
+            }
+          />
+          <TooltipContent className="max-w-[260px] leading-relaxed">
+            Назва не починається з ID товару - розбивка по товару недоступна.
+            Товар прикріплюється на рівні кампанії.
+          </TooltipContent>
+        </Tooltip>
+      )
+    }
+    return (
+      <Badge
+        variant="outline"
+        className={cls}
         render={
-          <Badge
-            className={cn(
-              "shrink-0 gap-1 border-transparent bg-amber-500/15 text-amber-700 dark:bg-amber-400/15 dark:text-amber-400",
-              compact && "h-4 px-1.5 text-[10px]"
-            )}
-          >
-            <IconAlertTriangle className="size-3" />
-            Без ID товару
-          </Badge>
+          <button
+            type="button"
+            onClick={onEdit}
+            aria-label="Прикріпити товар до кампанії"
+          />
         }
-      />
-      <TooltipContent className="max-w-[260px] leading-relaxed">
-        Назва не починається з ID товару - розбивка по товару недоступна.
-        Додайте ID на початок назви, напр. «1042 - …».
-      </TooltipContent>
-    </Tooltip>
+      >
+        <IconTag className="size-3" />
+        {compact ? "Прикріпити" : "Прикріпити товар"}
+        <IconPlus className={CHIP_ACTION} />
+      </Badge>
+    )
+  }
+
+  // The product marker: the same #id chip the product shelves carry, so a row
+  // reads the same whether the id came from its name or was attached by hand.
+  // No tooltip - the chip says what it is, the pencil that it can be changed.
+  return (
+    <Badge
+      variant="secondary"
+      className={cn(
+        "shrink-0 gap-1 font-mono text-[10px] tracking-tight",
+        compact && "h-4 px-1.5",
+        onEdit && "cursor-pointer hover:bg-primary/12 hover:text-primary"
+      )}
+      render={
+        onEdit ? (
+          <button
+            type="button"
+            onClick={onEdit}
+            aria-label={
+              "Товар " +
+              productId +
+              " · " +
+              productName +
+              ". Змінити або відкріпити."
+            }
+          />
+        ) : undefined
+      }
+    >
+      <IconTag className="size-3" />
+      {productId}
+      {onEdit && <IconPencil className={CHIP_ACTION} />}
+    </Badge>
   )
 }
 
@@ -523,6 +648,8 @@ export function CampaignsPage() {
   // no active plan - same account-level state the dashboard locks its widgets
   // with; here it replaces the sync strip and veils the table
   const { noPlan } = useDataSources()
+  // the people rows are attributed to - the same team managed in Налаштування
+  const { members } = useTeam()
   const [pricingOpen, setPricingOpen] = useState(false)
   const [filtersOpen, setFiltersOpen] = useState(false)
   const [visible, setVisible] = useState<Record<string, boolean>>(() =>
@@ -621,6 +748,11 @@ export function CampaignsPage() {
   // so it stays the same everywhere instead of being a per-table filter
   const { currency } = useCurrency()
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set())
+  // products attached to rows by hand - see productIdFor above
+  const [productLinks, setProductLinks] = useState<ProductLinks>({})
+  // the row whose product is being edited - kept while the dialog animates out
+  const [pickerTarget, setPickerTarget] = useState<ProductTarget | null>(null)
+  const [pickerOpen, setPickerOpen] = useState(false)
 
   // loading skeletons: a full-page one on first load, and a short table pulse
   // whenever the breakdown / entity changes so the switch feels "live"
@@ -642,6 +774,35 @@ export function CampaignsPage() {
   // "По товарам" groups by product id on every level (campaigns / groups / ads)
   const grouped = breakdown === BREAKDOWN_PRODUCT
 
+  const productIdOf = (c: Row) => productIdFor(productLinks, entity, c.name)
+  // products are attached to campaigns; ad groups and ads inherit the id from
+  // their name, so the picker is only reachable from the campaign level
+  const canEditProduct = entity === "Кампанії"
+  function openProductPicker(c: Row) {
+    setPickerTarget({
+      key: linkKey(entity, c.name),
+      name: c.name,
+      productId: productIdOf(c),
+      // the address, not the name: the dialog is where you decide to go ask the
+      // person who runs the campaign about the product behind it
+      authorEmail: authorOf(members, c)?.email ?? null,
+    })
+    setPickerOpen(true)
+  }
+  // campaigns per product - the quiet "3 кампанії" hint on the picker rows
+  const productCounts = useMemo(() => {
+    const m: Record<string, number> = {}
+    for (const c of CAMPAIGNS) {
+      const id = productIdFor(productLinks, "Кампанії", c.name)
+      if (id) m[id] = (m[id] ?? 0) + 1
+    }
+    return m
+  }, [productLinks])
+  function saveProductLink(key: string, productId: string | null) {
+    setProductLinks((m) => ({ ...m, [key]: productId }))
+    // open the shelf the campaign just joined, so the move is visible
+    if (productId) setExpanded((s) => new Set(s).add(productId))
+  }
   // level 2 - ad accounts on the currently chosen platform(s)
   const scopedAccounts = useMemo(
     () => AD_ACCOUNTS.filter((a) => platforms.has(a.platform)),
@@ -808,27 +969,31 @@ export function CampaignsPage() {
   const foot = useMemo(() => totals(rows), [rows])
 
   // share of orders (approves) that can't be synced to a product - orders on
-  // campaigns whose name has no product id
+  // campaigns with no product id, minus the ones a manual link resolved
   const unsyncedPct = useMemo(() => {
     let total = 0
     let bad = 0
     for (const c of CAMPAIGNS) {
       total += c.approves
-      if (c.match !== "ok") bad += c.approves
+      const k = linkKey("Кампанії", c.name)
+      const resolved =
+        k in productLinks ? productLinks[k] !== null : c.match === "ok"
+      if (!resolved) bad += c.approves
     }
     return total ? Math.round((bad / total) * 100) : 0
-  }, [])
+  }, [productLinks])
 
   // Fold the flat, already-filtered/sorted rows into product shelves. Rows keep
   // their natural order; a product with 2+ campaigns becomes a collapsible
   // group, a lone product-tagged campaign becomes a "single", and a campaign
-  // with no id prefix becomes an "orphan" (warned about, never grouped).
+  // with no product at all becomes an "orphan" (warned about, never grouped).
+  // A manual link counts exactly like an id in the name.
   const entries = useMemo<DisplayEntry[]>(() => {
     if (!grouped) return []
     const map = new Map<string, Indexed[]>()
     const order: Array<{ t: "g"; id: string } | { t: "o"; row: Indexed }> = []
     for (const r of rows) {
-      const { id } = parseProductId(r.name)
+      const id = productIdFor(productLinks, entity, r.name)
       if (!id) {
         order.push({ t: "o", row: r })
         continue
@@ -847,7 +1012,7 @@ export function CampaignsPage() {
       return {
         kind: "group",
         id: o.id,
-        product: PRODUCTS[o.id] ?? parseProductId(rs[0].name).rest,
+        product: productLabel(o.id, rs[0].name),
         rows: rs,
         agg: totals(rs),
         activeCount: rs.filter((r) => r.active).length,
@@ -885,7 +1050,7 @@ export function CampaignsPage() {
       orphansTier.sort(byKey)
     }
     return [...groupsTier, ...singlesTier, ...orphansTier]
-  }, [rows, grouped, sort])
+  }, [rows, grouped, sort, productLinks, entity])
 
   const groupIds = useMemo(
     () => entries.flatMap((e) => (e.kind === "group" ? [e.id] : [])),
@@ -1035,7 +1200,6 @@ export function CampaignsPage() {
   // the full original campaign name is always shown, including the id prefix
   type RowOpts = {
     child?: boolean // indented under a product group
-    warn?: boolean // show the "no product id" warning
   }
   function renderRow(c: Indexed, opts: RowOpts = {}) {
     // without the checkbox column there's no way to change the selection, so a
@@ -1043,6 +1207,18 @@ export function CampaignsPage() {
     const selected = showSelectCol && sel.has(c._i)
     const child = !!opts.child
     const displayName = c.name
+    // breakdown sub-rows aren't real entities, so they carry no author either
+    const author = c._breakdown ? null : authorOf(members, c)
+    // product state of the row: attach / change / detach lives on this control,
+    // breakdown sub-rows aren't real entities so they don't carry one
+    const pid = productIdOf(c)
+    const productCtl = c._breakdown ? null : (
+      <ProductControl
+        productId={pid}
+        compact={isMobile}
+        onEdit={canEditProduct ? () => openProductPicker(c) : undefined}
+      />
+    )
     return (
       <TableRow
         key={c._i}
@@ -1141,21 +1317,42 @@ export function CampaignsPage() {
                 )}
                 {/* on a phone the badge would eat the whole 158px name column,
                     so there it moves down to the subline instead */}
-                {opts.warn && !isMobile && <NoProductWarning />}
+                {!isMobile && productCtl}
               </div>
               <div className="flex min-w-0 items-center gap-1.5 text-[11px] text-muted-foreground">
-                {opts.warn && isMobile ? (
+                {isMobile && pid === null ? (
                   // the warning is worth more than the row number here
-                  <NoProductWarning compact />
+                  productCtl
                 ) : c._breakdown ? (
                   <span className="flex min-w-0 items-center gap-1.5">
                     <PlatformBadge id={c.platform} size={12} />
                     <span className="truncate">{c.name}</span>
                   </span>
                 ) : (
-                  <span className="truncate tabular-nums">
-                    №{entityId(entity, c._i)}
-                  </span>
+                  <>
+                    <span className="shrink-0 tabular-nums">
+                      №{entityId(entity, c._i)}
+                    </span>
+                    {/* who made it - the name reads faster than the address in
+                        a list, so the phone drops it (158px of name column) and
+                        the product dialog carries the email instead */}
+                    {!isMobile && author && (
+                      <span className="flex min-w-0 items-center gap-1">
+                        <span aria-hidden className="opacity-40">
+                          ·
+                        </span>
+                        <IconUser className="size-3 shrink-0 opacity-70" />
+                        <span className="truncate" title={author.email}>
+                          {author.name}
+                        </span>
+                      </span>
+                    )}
+                  </>
+                )}
+                {/* the phone keeps the row number and hangs the tag / edit
+                    control off the end of the same line */}
+                {isMobile && pid !== null && productCtl && (
+                  <span className="ml-auto flex shrink-0">{productCtl}</span>
                 )}
               </div>
             </div>
@@ -1322,7 +1519,7 @@ export function CampaignsPage() {
               {/* on a phone the ВКЛ column already reads "2/3", so the subline
                   only has to carry the product id */}
               <span className="truncate text-[11px] text-muted-foreground">
-                {isMobile ? "#" + e.id : `${e.activeCount} активних`}
+                {isMobile ? "ID " + e.id : `${e.activeCount} активних`}
               </span>
             </span>
             {!isMobile && countBadge}
@@ -1980,7 +2177,8 @@ export function CampaignsPage() {
             <span className="min-w-0">
               <b className="font-semibold">{orphanCount}</b>{" "}
               {plural(orphanCount, "кампанія", "кампанії", "кампаній")} без ID у
-              назві - розбивка по товару для них недоступна.{" "}
+              назві - розбивка по товару для них недоступна. Прикріпіть товар
+              кнопкою «Прикріпити товар» у рядку кампанії.{" "}
               <button
                 type="button"
                 className="font-medium whitespace-nowrap underline underline-offset-2 hover:no-underline"
@@ -2143,7 +2341,7 @@ export function CampaignsPage() {
                             )
                           }
                           if (e.kind === "orphan") {
-                            out.push(renderRow(e.row, { warn: true }))
+                            out.push(renderRow(e.row))
                           } else if (e.kind === "single") {
                             out.push(renderRow(e.row))
                           } else {
@@ -2267,6 +2465,15 @@ export function CampaignsPage() {
           onReset={resetFilters}
         />
       )}
+
+      {/* attach / change / detach the product of a single campaign */}
+      <ProductPickerDialog
+        open={pickerOpen}
+        target={pickerTarget}
+        counts={productCounts}
+        onOpenChange={setPickerOpen}
+        onSave={saveProductLink}
+      />
 
       <PricingDialog open={pricingOpen} onOpenChange={setPricingOpen} />
     </div>
