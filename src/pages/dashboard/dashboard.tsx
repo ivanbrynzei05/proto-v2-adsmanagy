@@ -496,10 +496,13 @@ function KpiCards() {
                 <KpiIcon className="size-3.5" />
                 {kpi.label}
               </div>
+              {/* the delta sits on its own row under the number, pushed to the
+                  right - full sums are long, and side by side the two fought
+                  for the same width */}
               {connected ? (
-                <div className="mt-2 flex items-center gap-3">
-                  <div className="flex min-w-0 items-baseline gap-2">
-                    <span className="truncate text-[26px] font-extrabold tracking-tight tabular-nums md:text-2xl">
+                <div className="mt-2 flex flex-col items-start gap-1.5">
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-[26px] font-extrabold tracking-tight tabular-nums md:text-2xl">
                       {num}
                     </span>
                     {suffix && (
@@ -511,7 +514,7 @@ function KpiCards() {
                   <Delta
                     value={kpi.delta}
                     className={cn(
-                      "ml-auto rounded-full px-2 py-0.5 text-xs",
+                      "self-end rounded-full px-2 py-0.5 text-xs",
                       kpi.delta >= 0
                         ? "bg-emerald-50 text-emerald-600 dark:bg-emerald-900/20"
                         : "bg-destructive/10 text-destructive"

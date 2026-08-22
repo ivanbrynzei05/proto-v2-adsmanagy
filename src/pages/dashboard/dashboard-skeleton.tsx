@@ -36,12 +36,13 @@ export function KpiCardsSkeleton() {
                 style={{ width: 48 + ((i * 17) % 28) }}
               />
             </div>
-            <div className="mt-2 flex items-center gap-3">
+            {/* number, then the delta pill on the row below it, right-aligned */}
+            <div className="mt-2 flex flex-col items-start gap-1.5">
               <Skeleton
                 className="h-7"
                 style={{ width: 62 + ((i * 23) % 30) }}
               />
-              <Skeleton className="ml-auto h-5 w-11 shrink-0 rounded-full" />
+              <Skeleton className="h-5 w-11 self-end rounded-full" />
             </div>
           </CardContent>
         </Card>
