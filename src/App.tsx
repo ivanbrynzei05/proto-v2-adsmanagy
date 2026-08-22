@@ -17,6 +17,7 @@ import { FaqPage } from "@/pages/help/faq"
 import { PrivacyPolicyPage } from "@/pages/legal/privacy"
 import { OnboardingPage } from "@/pages/onboarding/onboarding"
 import { SettingsPage } from "@/pages/settings/settings"
+import { StatisticsPage } from "@/pages/statistics/statistics"
 
 function AppLayout() {
   return (
@@ -43,6 +44,7 @@ export function App() {
                     <Route element={<AppLayout />}>
                       <Route path="/" element={<DashboardPage />} />
                       <Route path="/campaigns" element={<CampaignsPage />} />
+                      <Route path="/statistics" element={<StatisticsPage />} />
                       <Route path="/settings" element={<SettingsPage />} />
                       <Route path="/help/faq" element={<FaqPage />} />
                       <Route
