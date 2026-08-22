@@ -20,8 +20,8 @@ export const KPIS: Kpi[] = [
   { key: "leads", label: "Ліди", value: "8 442", delta: 12 },
   { key: "approves", label: "Апрув", value: "3 871", delta: 8 },
   { key: "approveRate", label: "% апруву", value: "45.9%", delta: 3 },
-  { key: "spend", label: "Витрати", value: "612 К₴", delta: 6 },
-  { key: "income", label: "Ймов. дохід", value: "284 К₴", delta: 18 },
+  { key: "spend", label: "Витрати", value: "612 000 ₴", delta: 6 },
+  { key: "income", label: "Ймов. дохід", value: "284 000 ₴", delta: 18 },
   { key: "roi", label: "ROI", value: "94%", delta: -4 },
 ]
 
@@ -250,9 +250,8 @@ const nf = new Intl.NumberFormat("uk-UA")
 
 export const fmtNum = (n: number) => nf.format(n)
 
+// always the full number - no "К" shorthand, the sums are read as-is
 export function fmtMoney(n: number) {
-  const abs = Math.abs(n)
-  if (abs >= 1_000) return `${nf.format(Math.round(n / 1000))} К₴`
   return `${nf.format(n)} ₴`
 }
 
