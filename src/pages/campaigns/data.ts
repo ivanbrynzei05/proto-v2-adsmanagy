@@ -3,6 +3,7 @@
 // consistent so column toggles and totals look believable.
 
 import { BASE_CURRENCY, type DisplayCurrency } from "@/features/currency/types"
+import { DEFAULT_EXPENSE_SETTINGS } from "@/features/expenses/types"
 
 // ---- base settings (would come from "Налаштування") ----
 const SETTINGS = {
@@ -13,6 +14,26 @@ const SETTINGS = {
   usdRate: 41.5, // курс для реклами
   defaultBuyout: 0.62, // стартовий % викупу
 }
+
+// The buyout % the analytics falls back to while a product has none of its own
+// (Налаштування → Витрати → "Стартовий % викупу"). Read from the same default
+// the settings form starts on, so the two can't drift apart.
+export const BASE_BUYOUT_PERCENT = Number(
+  DEFAULT_EXPENSE_SETTINGS.startingBuyoutPercent
+)
+
+// Everything downstream of the buyout %. When the base percent is substituted
+// these stop being measurements and become forecasts, so the table marks them.
+export const BUYOUT_DEPENDENT_KEYS: MetricKey[] = [
+  "buyoutRate",
+  "breakEvenLeadPrice",
+  "returns",
+  "probableIncome",
+  "buyerIncome",
+  "ownerIncome",
+  "roi",
+  "romi",
+]
 
 function round(n: number, d = 0) {
   const p = Math.pow(10, d)
@@ -73,6 +94,9 @@ export type MetricKey =
 export type Row = Record<MetricKey, number> & {
   name: string
   active: boolean
+  // the product behind this row has no buyout statistics of its own yet, so
+  // BASE_BUYOUT_PERCENT stands in and BUYOUT_DEPENDENT_KEYS are forecasts
+  buyoutEstimated: boolean
   portfolio: string // business account id
   platform: PlatformId
   adAccount: string // ad account id
@@ -128,6 +152,9 @@ type RawCampaign = {
   margin: number
   cogs: number
   buyout: number
+  // set on products that have not passed the order threshold yet - compute()
+  // ignores `buyout` for them and substitutes BASE_BUYOUT_PERCENT
+  buyoutEstimated?: boolean
   buyerPct: number
 }
 
@@ -318,6 +345,7 @@ const RAW: RawCampaign[] = [
     buyerPct: 0.25,
   },
   // ── product 3310 · Тример для бороди BarberPro - 2 campaigns ──
+  // just launched: no buyout of its own yet, so both campaigns run on the base %
   {
     name: "3310 - BarberPro | FB широка",
     platform: "facebook",
@@ -334,6 +362,7 @@ const RAW: RawCampaign[] = [
     margin: 360,
     cogs: 240,
     buyout: 0.72,
+    buyoutEstimated: true,
     buyerPct: 0.3,
   },
   {
@@ -352,6 +381,7 @@ const RAW: RawCampaign[] = [
     margin: 360,
     cogs: 240,
     buyout: 0.7,
+    buyoutEstimated: true,
     buyerPct: 0.3,
   },
   // ── single-campaign products (unique id, shown with a product chip) ──
@@ -425,6 +455,7 @@ const RAW: RawCampaign[] = [
     margin: 250,
     cogs: 110,
     buyout: 0.57,
+    buyoutEstimated: true, // too few completed orders to measure its own %
     buyerPct: 0.3,
   },
   {
@@ -443,6 +474,7 @@ const RAW: RawCampaign[] = [
     margin: 300,
     cogs: 130,
     buyout: 0.69,
+    buyoutEstimated: true, // freshly launched product, still on the base %
     buyerPct: 0.35,
   },
   // ── campaigns with NO product id up front - can't be split by product ──
@@ -502,11 +534,18 @@ const RAW: RawCampaign[] = [
   },
 ]
 
-type Computed = Record<MetricKey, number> & { name: string; active: boolean }
+type Computed = Record<MetricKey, number> & {
+  name: string
+  active: boolean
+  buyoutEstimated: boolean
+}
 
 function compute(r: RawCampaign): Computed {
   const s = SETTINGS
   const { leads, approves, spend } = r
+  // a product without its own statistics borrows the base percent - from here
+  // down, every figure that touches `buyout` is a forecast
+  const buyout = r.buyoutEstimated ? BASE_BUYOUT_PERCENT / 100 : r.buyout
 
   const costPerLead = spend / leads
   const approveRate = (approves / leads) * 100
@@ -516,8 +555,8 @@ function compute(r: RawCampaign): Computed {
   const cpc = spend / r.clicks
   const ctr = (r.clicks / r.impressions) * 100
 
-  const buyoutRate = r.buyout * 100
-  const buyoutOrders = approves * r.buyout
+  const buyoutRate = buyout * 100
+  const buyoutOrders = approves * buyout
   const refusals = approves - buyoutOrders
 
   // витрати
@@ -547,6 +586,7 @@ function compute(r: RawCampaign): Computed {
   return {
     name: r.name,
     active: r.active,
+    buyoutEstimated: r.buyoutEstimated ?? false,
     leads,
     costPerLead: round(costPerLead, 1),
     approves,
@@ -765,7 +805,7 @@ export const COLUMNS: Column[] = [
     label: "% викупу",
     unit: "%",
     group: "money",
-    hint: "Викуплені / апрувнуті × 100",
+    hint: "Викуплені / апрувнуті × 100. Поки фактичного викупу ще немає, підставляється базовий % із Налаштувань — такі значення позначені «~»",
   },
   {
     key: "returns",

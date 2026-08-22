@@ -9,7 +9,6 @@ import {
   IconChevronsDown,
   IconChevronsUp,
   IconChevronUp,
-  IconClock,
   IconColumns,
   IconCrown,
   IconDownload,
@@ -78,6 +77,7 @@ import {
   AD_ACCOUNTS,
   AD_GROUPS,
   ADS,
+  BUYOUT_DEPENDENT_KEYS,
   CAMPAIGNS,
   COL_GROUPS,
   COLUMNS,
@@ -101,6 +101,30 @@ import { CampaignFiltersSheet } from "./filters-sheet"
 import { PlatformBadge } from "./platform-badge"
 import { ProductPickerDialog, type ProductTarget } from "./product-picker"
 
+// Columns that stop being measurements once the base buyout % is substituted.
+const FORECAST_KEYS = new Set(BUYOUT_DEPENDENT_KEYS)
+
+// Wraps a forecast value so it explains itself on hover. Deliberately quieter
+// than UnknownCell's amber dashed frame: there *is* a number here, it just
+// isn't final yet.
+function ForecastTooltip({ children }: { children: React.ReactNode }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={<span className="cursor-help">{children}</span>}
+      />
+      <TooltipContent className="max-w-[260px] leading-relaxed">
+        <span className="flex flex-col gap-1">
+          <span className="font-medium">Прогноз, а не факт</span>
+          <span>
+            Спирається на базовий % викупу з Налаштувань — фактичного ще немає.
+          </span>
+        </span>
+      </TooltipContent>
+    </Tooltip>
+  )
+}
+
 // ---- single metric cell: pill / mini-bar / plain number ----
 // accepts a full Row or an aggregated { metric: value } map (product-group total)
 function ValueCell({
@@ -108,6 +132,7 @@ function ValueCell({
   col,
   cur,
   compact = false,
+  estimated = false,
 }: {
   row: Record<MetricKey, number>
   col: Column
@@ -115,8 +140,24 @@ function ValueCell({
   cur: DisplayCurrency
   /** phone layout - drops the decorative mini-bar, keeps the number */
   compact?: boolean
+  /** the row runs on the base buyout %, so this value is a forecast */
+  estimated?: boolean
 }) {
   const v = row[col.key]
+  // one leading tilde is the whole signal - it survives every layout, phone
+  // included, and reads as "приблизно" without a legend. Kept as its own dimmed
+  // span rather than glued to the string so it stays legible on "~-12,4%".
+  const text = (
+    <>
+      {estimated && <span className="mr-px opacity-55">~</span>}
+      {fmt(v, col.unit, cur)}
+    </>
+  )
+  const wrap = (node: React.ReactNode) =>
+    estimated ? <ForecastTooltip>{node}</ForecastTooltip> : node
+  // dotted, not solid: an annotation on the number rather than a link
+  const dotted =
+    estimated && "underline decoration-dotted decoration-1 underline-offset-4"
 
   if (
     col.key === "roi" ||
@@ -124,29 +165,35 @@ function ValueCell({
     col.key === "probableIncome" ||
     col.key === "ownerIncome"
   ) {
-    return (
+    return wrap(
       <Badge
         variant="outline"
         className={cn(
-          "border-transparent tabular-nums",
+          "tabular-nums",
+          // a pill can't carry an underline legibly - it goes dashed instead
+          estimated ? "border-dashed border-current/35" : "border-transparent",
           compact && "px-1.5 text-[11px]",
           v >= 0
             ? "bg-emerald-500/12 text-emerald-600 dark:text-emerald-400"
             : "bg-destructive/10 text-destructive"
         )}
       >
-        {fmt(v, col.unit, cur)}
+        {text}
       </Badge>
     )
   }
 
   if (!compact && (col.key === "approveRate" || col.key === "buyoutRate")) {
-    return (
+    return wrap(
       <span className="inline-flex items-center gap-2">
-        <span className="w-11 tabular-nums">{fmt(v, col.unit, cur)}</span>
+        <span className={cn("w-11 tabular-nums", dotted)}>{text}</span>
         <span className="h-1.5 w-11 overflow-hidden rounded-full bg-muted">
+          {/* a faded fill for a bar that was assumed rather than measured */}
           <span
-            className="block h-full rounded-full bg-primary"
+            className={cn(
+              "block h-full rounded-full",
+              estimated ? "bg-primary/40" : "bg-primary"
+            )}
             style={{ width: Math.min(100, v) + "%" }}
           />
         </span>
@@ -154,7 +201,7 @@ function ValueCell({
     )
   }
 
-  return <span className="tabular-nums">{fmt(v, col.unit, cur)}</span>
+  return wrap(<span className={cn("tabular-nums", dotted)}>{text}</span>)
 }
 
 // ---- entity tabs (campaign → ad-group → ad drill levels) ----
@@ -526,6 +573,39 @@ function relativeTime(from: Date, nowMs: number): string {
   return Math.floor(h / 24) + " дн тому"
 }
 
+type SyncState = "syncing" | "idle" | "cooling"
+
+// the whole sync state in one dot: green and pinging only while a pull is in
+// flight, a quiet grey marker the rest of the time (amber while the rate
+// limiter is holding the button)
+function SyncDot({ state }: { state: SyncState }) {
+  const color =
+    state === "cooling"
+      ? "bg-amber-500"
+      : state === "syncing"
+        ? "bg-emerald-500"
+        : "bg-muted-foreground/50"
+
+  return (
+    <span className="relative flex size-1.5 shrink-0">
+      {state === "syncing" && (
+        <span
+          className={cn(
+            "absolute inline-flex size-full animate-ping rounded-full opacity-75",
+            color
+          )}
+        />
+      )}
+      <span
+        className={cn(
+          "relative inline-flex size-full rounded-full transition-colors duration-700",
+          color
+        )}
+      />
+    </span>
+  )
+}
+
 // "Оновити" + last-updated time, with a small anti-spam rate limiter: three quick
 // clicks in a row lock the button for 5s. Isolated in its own component so its
 // once-a-second tick doesn't re-render the whole table.
@@ -558,27 +638,38 @@ function RefreshControl({ compact = false }: { compact?: boolean }) {
     setSpinning(true)
     setLastUpdated(new Date(t))
     setNow(t)
-    window.setTimeout(() => setSpinning(false), 600)
+    // two full pings of the dot - long enough to read as a real pull
+    window.setTimeout(() => setSpinning(false), 1800)
   }
 
   const status = cooling
     ? `Наступна спроба через ${remaining}с`
     : relativeTime(lastUpdated, now)
 
+  const dotState: SyncState = cooling
+    ? "cooling"
+    : spinning
+      ? "syncing"
+      : "idle"
+
+  // lowercase to sit with "щойно" / "5 хв тому"
+  const label = spinning && !cooling ? "синхронізація" : status
+
   // on a phone the "Оновити" label goes but the sync time stays - it's the one
   // thing you can't get back by tapping something
   if (compact) {
     return (
       <div className="flex shrink-0 items-center gap-1.5">
+        {/* no room for a "синхронізація" label here - the pinging dot carries it */}
         <span
           className={cn(
-            "flex items-center gap-1 text-[11px] whitespace-nowrap",
+            "flex items-center gap-1.5 text-[11px] whitespace-nowrap tabular-nums",
             cooling
               ? "text-amber-600 dark:text-amber-500"
               : "text-muted-foreground"
           )}
         >
-          <IconClock className="size-3 shrink-0" />
+          <SyncDot state={dotState} />
           {cooling ? remaining + "с" : relativeTime(lastUpdated, now)}
         </span>
         <Button
@@ -600,14 +691,18 @@ function RefreshControl({ compact = false }: { compact?: boolean }) {
     <div className="flex items-center gap-2">
       <span
         className={cn(
-          "flex items-center gap-1 text-xs whitespace-nowrap",
+          "flex items-center gap-1.5 text-xs whitespace-nowrap tabular-nums",
           cooling
             ? "text-amber-600 dark:text-amber-500"
             : "text-muted-foreground"
         )}
       >
-        <IconClock className="size-3.5 shrink-0" />
-        {status}
+        <SyncDot state={dotState} />
+        {/* keyed so every label change (and the moment a pull lands) cross-fades
+            instead of snapping */}
+        <span key={label} className="animate-in duration-500 fade-in">
+          {label}
+        </span>
       </span>
       <Button
         variant="outline"
@@ -958,6 +1053,11 @@ export function CampaignsPage() {
   }, [entity, platforms, adAccounts, drill, query, sort, activeMap, breakdown])
 
   const foot = useMemo(() => totals(rows), [rows])
+  // a total built partly on the base buyout % is a forecast as well
+  const footEstimated = useMemo(
+    () => rows.some((r) => r.buyoutEstimated),
+    [rows]
+  )
 
   // share of orders (approves) that can't be synced to a product - orders on
   // campaigns with no product id, minus the ones a manual link resolved
@@ -1370,6 +1470,7 @@ export function CampaignsPage() {
                   row={c}
                   col={col}
                   cur={currency}
+                  estimated={c.buyoutEstimated && FORECAST_KEYS.has(col.key)}
                   compact={isMobile}
                 />
               )}
@@ -1529,6 +1630,12 @@ export function CampaignsPage() {
               row={e.agg}
               col={col}
               cur={currency}
+              // one campaign on the base % is enough to make the shelf total
+              // a forecast too
+              estimated={
+                e.rows.some((r) => r.buyoutEstimated) &&
+                FORECAST_KEYS.has(col.key)
+              }
               compact={isMobile}
             />
           </TableCell>
@@ -2403,26 +2510,42 @@ export function CampaignsPage() {
                         : ENTITY_NOUN[entity]}
                     </span>
                   </TableCell>
-                  {cols.map((col) => (
-                    <TableCell
-                      key={col.key}
-                      className={cn(
-                        "sticky bottom-0 z-10 overflow-hidden border-t text-left tabular-nums",
-                        cellPad,
-                        col.emphasize ? HEADER_EMPH : FOOTER_BG
-                      )}
-                    >
-                      {RATE_KEYS.includes(col.key) ? (
-                        <span className="font-medium text-muted-foreground">
-                          сер. {fmt(foot[col.key], col.unit, currency)}
-                        </span>
-                      ) : (
-                        <span className="font-bold">
-                          {fmt(foot[col.key], col.unit, currency)}
-                        </span>
-                      )}
-                    </TableCell>
-                  ))}
+                  {cols.map((col) => {
+                    const est = footEstimated && FORECAST_KEYS.has(col.key)
+                    const value = (
+                      <>
+                        {est && <span className="mr-px opacity-55">~</span>}
+                        {fmt(foot[col.key], col.unit, currency)}
+                      </>
+                    )
+                    const cell = RATE_KEYS.includes(col.key) ? (
+                      <span className="font-medium text-muted-foreground">
+                        сер. {value}
+                      </span>
+                    ) : (
+                      <span className="font-bold">{value}</span>
+                    )
+                    return (
+                      <TableCell
+                        key={col.key}
+                        className={cn(
+                          "sticky bottom-0 z-10 overflow-hidden border-t text-left tabular-nums",
+                          cellPad,
+                          col.emphasize ? HEADER_EMPH : FOOTER_BG
+                        )}
+                      >
+                        {est ? (
+                          <ForecastTooltip>
+                            <span className="underline decoration-dotted decoration-1 underline-offset-4">
+                              {cell}
+                            </span>
+                          </ForecastTooltip>
+                        ) : (
+                          cell
+                        )}
+                      </TableCell>
+                    )
+                  })}
                 </TableRow>
               </TableFooter>
             </Table>
