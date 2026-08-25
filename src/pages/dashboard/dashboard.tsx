@@ -20,7 +20,7 @@ import {
 } from "@tabler/icons-react"
 import { useEffect, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
-import { Bar, BarChart, LabelList, XAxis, YAxis } from "recharts"
+import { CartesianGrid, Line, LineChart, XAxis, YAxis } from "recharts"
 
 import sideStepsImage from "@/assets/side_steps.png"
 import { useDataSources } from "@/components/data-sources-provider"
@@ -534,43 +534,25 @@ function KpiCards() {
   )
 }
 
-// The column is the whole funnel: its height is all leads of that day, cut into
-// the stage each lead ended up in. Only the two stage remainders are derived -
-// "leadsRest" are leads that never got an approve, "approvesRest" are approves
-// that are neither bought out nor returned yet.
+// Each funnel stage is a line of its own, so the chart carries the real stage
+// totals - ліди, апрув, викуп, повернення - instead of the stacked remainders
+// the columns used to be cut into. Colours come from the shared four-slot
+// series palette (see the --viz-* block in index.css).
 const chartConfig = {
-  buyout: { label: "Викуп", color: "var(--primary)" },
-  returns: {
-    label: "Повернення",
-    color: "color-mix(in oklab, var(--destructive) 85%, var(--card))",
-  },
-  approvesRest: {
-    label: "Апрув",
-    color: "color-mix(in oklab, var(--primary) 50%, var(--card))",
-  },
-  leadsRest: {
-    label: "Ліди",
-    color: "color-mix(in oklab, var(--primary) 18%, var(--card))",
-  },
+  leads: { label: "Ліди", color: "var(--viz-1)" },
+  approves: { label: "Апрув", color: "var(--viz-4)" },
+  buyout: { label: "Викуп", color: "var(--viz-3)" },
+  returns: { label: "Повернення", color: "var(--viz-2)" },
 } satisfies ChartConfig
 
-// bottom of the column first, so the legend reads the same way it stacks
+// the funnel top-down, the order both the legend and the tooltip read in
 // (recharts' own legend sorts by dataKey, so it is rendered by hand below)
-const LEADS_LEGEND = ["buyout", "returns", "approvesRest", "leadsRest"] as const
-
-// the tooltip reads the funnel top-down, with the real stage totals rather than
-// the stacked remainders: ліди 1 080 (100%) -> апрув 496 (46%) -> викуп ...
-const TOOLTIP_ROWS = [
-  { key: "leadsRest", metric: "leads" },
-  { key: "approvesRest", metric: "approves" },
-  { key: "buyout", metric: "buyout" },
-  { key: "returns", metric: "returns" },
-] as const
+const LEADS_SERIES = ["leads", "approves", "buyout", "returns"] as const
 
 function LeadsLegend() {
   return (
     <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1.5 pt-3 text-xs text-muted-foreground">
-      {LEADS_LEGEND.map((key) => (
+      {LEADS_SERIES.map((key) => (
         <span key={key} className="flex items-center gap-1.5">
           <span
             className="size-2 shrink-0 rounded-[2px]"
@@ -596,104 +578,68 @@ function LeadsTooltip({
   const point = payload[0].payload
 
   return (
-    <div className="grid min-w-52 gap-1.5 rounded-lg border border-border/50 bg-background px-2.5 py-2 text-xs shadow-xl">
+    <div className="grid min-w-44 gap-1.5 rounded-lg border border-border/50 bg-background px-2.5 py-2 text-xs shadow-xl">
       <div className="font-medium">{label}</div>
-      {TOOLTIP_ROWS.map(({ key, metric }) => {
-        const value = point[metric]
-        const share = point.leads ? Math.round((value / point.leads) * 100) : 0
-        return (
-          <div key={key} className="flex items-center gap-2">
-            <span
-              className="size-2.5 shrink-0 rounded-[2px]"
-              style={{ backgroundColor: chartConfig[key].color }}
-            />
-            <span className="text-muted-foreground">
-              {chartConfig[key].label}
-            </span>
-            <span className="ml-auto font-medium tabular-nums">
-              {fmtNum(value)}
-            </span>
-            <span className="w-9 text-right text-muted-foreground tabular-nums">
-              {share}%
-            </span>
-          </div>
-        )
-      })}
+      {LEADS_SERIES.map((key) => (
+        <div key={key} className="flex items-center gap-2">
+          <span
+            className="size-2.5 shrink-0 rounded-[2px]"
+            style={{ backgroundColor: chartConfig[key].color }}
+          />
+          <span className="text-muted-foreground">
+            {chartConfig[key].label}
+          </span>
+          <span className="ml-auto font-medium tabular-nums">
+            {fmtNum(point[key])}
+          </span>
+        </div>
+      ))}
     </div>
   )
 }
 
-// the column is one shape: only the outer ends of the stack are rounded
-const TOP_RADIUS: [number, number, number, number] = [8, 8, 0, 0]
-const BOTTOM_RADIUS: [number, number, number, number] = [0, 0, 8, 8]
-
-function LeadsBars({ points }: { points: LeadsPoint[] }) {
-  // fewer, wider columns for a week; thinner ones as the range gets denser
-  const barSize =
-    points.length <= 7
-      ? 44
-      : points.length <= 10
-        ? 34
-        : points.length <= 12
-          ? 28
-          : 22
-  const data = points.map((p) => ({
-    ...p,
-    approvesRest: p.approves - p.buyout - p.returns,
-    leadsRest: p.leads - p.approves,
-  }))
-
+function LeadsLines({ points }: { points: LeadsPoint[] }) {
   return (
     <>
       <ChartContainer config={chartConfig} className="h-[252px] w-full">
-        <BarChart accessibilityLayer data={data} barSize={barSize}>
+        <LineChart
+          accessibilityLayer
+          data={points}
+          margin={{ left: 4, right: 12, top: 8 }}
+        >
+          <CartesianGrid vertical={false} stroke="var(--border)" />
           <XAxis
             dataKey="label"
             tickLine={false}
             axisLine={false}
             tickMargin={10}
+            minTickGap={16}
           />
-          <YAxis hide domain={[0, (max: number) => Math.ceil(max * 1.18)]} />
-          <ChartTooltip cursor={false} content={<LeadsTooltip />} />
-          <Bar
-            dataKey="buyout"
-            stackId="a"
-            fill="var(--color-buyout)"
-            radius={BOTTOM_RADIUS}
-            stroke="var(--card)"
-            strokeWidth={2}
+          {/* the lines carry no labels of their own, so the axis is what makes
+              the funnel readable without hovering */}
+          <YAxis
+            tickLine={false}
+            axisLine={false}
+            width={44}
+            tickFormatter={(value: number) => fmtNum(value)}
+            domain={[0, (max: number) => Math.ceil(max * 1.08)]}
           />
-          <Bar
-            dataKey="returns"
-            stackId="a"
-            fill="var(--color-returns)"
-            stroke="var(--card)"
-            strokeWidth={2}
+          <ChartTooltip
+            cursor={{ stroke: "var(--border)" }}
+            content={<LeadsTooltip />}
           />
-          <Bar
-            dataKey="approvesRest"
-            stackId="a"
-            fill="var(--color-approvesRest)"
-            stroke="var(--card)"
-            strokeWidth={2}
-          />
-          <Bar
-            dataKey="leadsRest"
-            stackId="a"
-            fill="var(--color-leadsRest)"
-            radius={TOP_RADIUS}
-            stroke="var(--card)"
-            strokeWidth={2}
-          >
-            <LabelList
-              dataKey="leads"
-              position="top"
-              offset={10}
-              className="fill-foreground text-xs font-semibold"
-              formatter={(value) => fmtNum(Number(value))}
+          {LEADS_SERIES.map((key) => (
+            <Line
+              key={key}
+              dataKey={key}
+              type="monotone"
+              stroke={`var(--color-${key})`}
+              strokeWidth={2}
+              dot={false}
+              activeDot={{ r: 4, strokeWidth: 2, stroke: "var(--card)" }}
             />
-          </Bar>
-        </BarChart>
+          ))}
+        </LineChart>
       </ChartContainer>
       <LeadsLegend />
     </>
@@ -712,7 +658,7 @@ function LeadsChart({ range }: { range: DatePreset }) {
         </CardHeader>
         <CardContent className="relative flex h-[280px] flex-col pt-4">
           <div className="pointer-events-none opacity-80 blur-sm saturate-75 select-none">
-            <LeadsBars points={points} />
+            <LeadsLines points={points} />
           </div>
           <LockedOverlay
             noPlan={noPlan}
@@ -731,7 +677,7 @@ function LeadsChart({ range }: { range: DatePreset }) {
         <CardTitle className={titleClass}>Ліди</CardTitle>
       </CardHeader>
       <CardContent className="flex flex-1 flex-col justify-end pt-4">
-        <LeadsBars points={points} />
+        <LeadsLines points={points} />
       </CardContent>
     </Card>
   )

@@ -51,27 +51,89 @@ export function KpiCardsSkeleton() {
   )
 }
 
-// bar heights (% of the plot area) - a plausible week, not the real numbers
-const BAR_HEIGHTS = [56, 64, 56, 73, 80, 48, 42]
+// the four funnel lines of the real chart, as y-coordinates in a 0..100 viewBox
+// (0 is the top): ліди run high, then апрув, викуп and повернення below them.
+// A plausible week, not the real numbers.
+const LINE_SHAPES = [
+  [26, 18, 30, 14, 22, 34, 24],
+  [54, 48, 58, 44, 50, 62, 52],
+  [72, 68, 76, 63, 69, 79, 71],
+  [92, 89, 93, 88, 90, 94, 91],
+]
+
+// legend labels are "Ліди · Апрув · Викуп · Повернення" - the last one is long
+const LEGEND_WIDTHS = [28, 38, 38, 70]
+
+// the real chart draws its lines with type="monotone", so the skeleton rounds
+// its corners the same way: a Catmull-Rom spline through the points, written
+// out as the cubic segments svg understands
+function smoothPath(ys: number[]) {
+  const step = 100 / (ys.length - 1)
+  // the ends have no neighbour to lean on, so they lean on themselves
+  const at = (i: number) => {
+    const j = Math.min(Math.max(i, 0), ys.length - 1)
+    return { x: j * step, y: ys[j] }
+  }
+  const r = (n: number) => Math.round(n * 100) / 100
+  let d = `M 0,${ys[0]}`
+  for (let i = 0; i < ys.length - 1; i++) {
+    const [prev, from, to, next] = [at(i - 1), at(i), at(i + 1), at(i + 2)]
+    const c1 = {
+      x: from.x + (to.x - prev.x) / 6,
+      y: from.y + (to.y - prev.y) / 6,
+    }
+    const c2 = {
+      x: to.x - (next.x - from.x) / 6,
+      y: to.y - (next.y - from.y) / 6,
+    }
+    d += ` C ${r(c1.x)},${r(c1.y)} ${r(c2.x)},${r(c2.y)} ${r(to.x)},${r(to.y)}`
+  }
+  return d
+}
 
 export function LeadsChartSkeleton() {
   return (
     <Card className="gap-0 py-3.5 [--card-spacing:18px]">
       <CardHeadSkeleton title={132} desc={148} className="pb-3.5" />
       <CardContent className="flex flex-1 flex-col justify-end pt-4">
-        <div className="flex h-[280px] items-end gap-2 px-1 sm:px-3">
-          {BAR_HEIGHTS.map((h, i) => (
-            <div
-              key={i}
-              className="flex h-full flex-1 flex-col items-center gap-2.5"
+        <div className="flex h-[252px] flex-col">
+          <div className="flex min-h-0 flex-1 gap-3">
+            {/* stubs for the value axis, as wide as the real one */}
+            <div className="flex w-8 shrink-0 flex-col justify-between py-0.5">
+              {Array.from({ length: 5 }, (_, i) => (
+                <Skeleton key={i} className="h-2.5 w-full" />
+              ))}
+            </div>
+            {/* stretched to the plot area, so the stroke is kept unscaled */}
+            <svg
+              viewBox="0 0 100 100"
+              preserveAspectRatio="none"
+              className="h-full flex-1 animate-pulse"
             >
-              <div className="flex w-full flex-1 items-end justify-center">
-                <Skeleton
-                  className="w-full max-w-12 rounded-t-lg"
-                  style={{ height: `${h}%` }}
+              {LINE_SHAPES.map((ys, i) => (
+                <path
+                  key={i}
+                  d={smoothPath(ys)}
+                  className="stroke-muted"
+                  fill="none"
+                  strokeWidth={2}
+                  strokeLinecap="round"
+                  vectorEffect="non-scaling-stroke"
                 />
-              </div>
-              <Skeleton className="h-3 w-6 shrink-0" />
+              ))}
+            </svg>
+          </div>
+          <div className="mt-2.5 flex justify-between pl-11">
+            {LINE_SHAPES[0].map((_, i) => (
+              <Skeleton key={i} className="h-2.5 w-6" />
+            ))}
+          </div>
+        </div>
+        <div className="flex items-center justify-center gap-4 pt-3">
+          {LEGEND_WIDTHS.map((w, i) => (
+            <div key={i} className="flex items-center gap-1.5">
+              <Skeleton className="size-2 shrink-0 rounded-[2px]" />
+              <Skeleton className="h-2.5" style={{ width: w }} />
             </div>
           ))}
         </div>
