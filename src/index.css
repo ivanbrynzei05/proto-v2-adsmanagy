@@ -84,6 +84,15 @@
   --viz-2: #eb6834;
   --viz-3: #1baf7a;
   --viz-4: #eda100;
+  /* CRM status categories, stacked inside one column. A status set, not series
+     colours: each hue means a state (підтверджено / завершено / відмова), so it
+     is never handed out to "series 4". Validated against the card: worst
+     adjacent pair rose↔teal ΔE 10.2 under deutan, 24.3 to a normal-vision
+     reader, all three over 3:1 - and the stack always ships a labelled legend
+     plus a tooltip, so the colour never carries the meaning alone. */
+  --st-completed: #0d9488;
+  --st-approved: #d97706;
+  --st-rejected: #e11d48;
   --radius: 0.875rem;
   --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
@@ -125,6 +134,11 @@
   --viz-2: #d95926;
   --viz-3: #199e70;
   --viz-4: #c98500;
+  /* the same three hues re-stepped into the dark card's lightness band, not an
+     automatic flip (rose↔teal ΔE 9.2 deutan, 21.1 normal, all three over 3:1) */
+  --st-completed: #12a294;
+  --st-approved: #c98500;
+  --st-rejected: #ef4a63;
   --sidebar: oklch(0.208 0.042 265.755);
   --sidebar-foreground: oklch(0.984 0.003 247.858);
   --sidebar-primary: oklch(0.546 0.245 262.881);

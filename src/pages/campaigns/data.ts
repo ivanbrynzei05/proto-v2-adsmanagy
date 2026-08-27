@@ -6,7 +6,9 @@ import { BASE_CURRENCY, type DisplayCurrency } from "@/features/currency/types"
 import { DEFAULT_EXPENSE_SETTINGS } from "@/features/expenses/types"
 
 // ---- base settings (would come from "Налаштування") ----
-const SETTINGS = {
+// Exported so the Статистика report derives its money the same way the campaign
+// table does, instead of keeping a second copy of these prices.
+export const SETTINGS = {
   ccPerOrder: 20, // ₴ за оброблене замовлення
   ccUpsellPct: 0.2, // 20% від маржі допродажу
   packagingPerParcel: 15, // ₴ за запаковану посилку
