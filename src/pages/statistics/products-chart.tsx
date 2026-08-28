@@ -11,18 +11,20 @@ import type { DisplayCurrency } from "@/features/currency/types"
 import { cn } from "@/lib/utils"
 import { fmt } from "@/pages/campaigns/data"
 import { fmtNum } from "@/pages/dashboard/data"
-import { TOOLTIP_BOX, TooltipHead, tooltipBounds } from "./chart-tooltip"
+import {
+  TOOLTIP_BOX,
+  TooltipHead,
+  TooltipSeries,
+  tooltipBounds,
+} from "./chart-tooltip"
 import {
   PRODUCT_METRICS,
   productMetrics,
-  productTiles,
   type ProductsPoint,
   type ProductsReport,
 } from "./data"
-import { TooltipTiles } from "./metric-tiles"
 import {
   drawn,
-  Mark,
   SeriesRail,
   toggleSeries,
   type SeriesRow,
@@ -52,26 +54,27 @@ function ProductsTooltip({
   const point = payload?.[0]?.payload
   if (!active || !point) return null
 
-  // the block under the chart, read for this column - minus whatever is already
-  // standing above it as a line
-  const tiles = [
-    { key: "ads", label: "Реклама", value: point.ads, unit: "₴" as const },
-    ...productTiles(point).filter((t) => !lines.some((l) => l.key === t.key)),
-  ]
+  // Every drawn line with its figure, and under Витрати what it is made of —
+  // the same shape the rail beside the chart carries.
+  const rows: SeriesRow[] = lines.map((m) => ({
+    key: m.key,
+    label: m.label,
+    color: m.color,
+    mark: "line",
+    value: fmt(point[m.key], "₴", currency),
+    detail:
+      m.key === "costs"
+        ? [
+            { label: "Реклама", value: fmt(point.ads, "₴", currency) },
+            { label: "Собівартість", value: fmt(point.cogs, "₴", currency) },
+          ]
+        : undefined,
+  }))
 
   return (
-    <div className={cn(TOOLTIP_BOX, "w-[268px] gap-1.5")}>
+    <div className={cn(TOOLTIP_BOX, "w-[280px] gap-1.5")}>
       <TooltipHead title={point.full} />
-      {lines.map((m) => (
-        <div key={m.key} className="flex items-center gap-2">
-          <Mark mark="line" color={m.color} />
-          <span className="min-w-0 flex-1 truncate">{m.label}</span>
-          <span className="shrink-0 font-medium tabular-nums">
-            {fmt(point[m.key], "₴", currency)}
-          </span>
-        </div>
-      ))}
-      <TooltipTiles tiles={tiles} currency={currency} />
+      <TooltipSeries rows={rows} />
     </div>
   )
 }

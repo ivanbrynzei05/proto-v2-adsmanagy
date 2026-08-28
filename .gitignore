@@ -22,3 +22,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# real responses saved from a live account — client figures, never published
+public/real/

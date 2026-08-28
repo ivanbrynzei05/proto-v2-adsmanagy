@@ -9,18 +9,20 @@ import {
 import { cn } from "@/lib/utils"
 import { plural } from "@/pages/campaigns/data"
 import { fmtNum } from "@/pages/dashboard/data"
-import { TOOLTIP_BOX, TooltipHead, tooltipBounds } from "./chart-tooltip"
+import {
+  TOOLTIP_BOX,
+  TooltipHead,
+  TooltipSeries,
+  tooltipBounds,
+} from "./chart-tooltip"
 import {
   CATEGORIES,
-  orderTiles,
   type CategoryKey,
   type OrdersPoint,
   type OrdersReport,
 } from "./data"
-import { TooltipTiles } from "./metric-tiles"
 import {
   drawn,
-  Mark,
   SeriesRail,
   toggleSeries,
   type SeriesRow,
@@ -72,6 +74,36 @@ function pct(value: number, total: number) {
   return `${Math.round((value / total) * 100)}%`
 }
 
+/** The rail's rows, read at one column: the counts and the statuses behind them. */
+function tooltipRows(
+  point: OrdersPoint,
+  bars: { key: CategoryKey; label: string; color: string }[]
+): SeriesRow[] {
+  return [
+    {
+      key: LEADS.key,
+      label: LEADS.label,
+      color: LEADS.color,
+      mark: "line",
+      value: fmtNum(point.leads),
+    },
+    ...bars.map(
+      (c): SeriesRow => ({
+        key: c.key,
+        label: c.label,
+        color: c.color,
+        mark: "bar",
+        value: `${fmtNum(point[c.key])}  ${pct(point[c.key], point.leads)}`,
+        // what the category is made of at this column, not over the period
+        detail: point.statuses[c.key].map((s) => ({
+          label: s.name,
+          value: fmtNum(s.value),
+        })),
+      })
+    ),
+  ]
+}
+
 function OrdersTooltip({
   active,
   payload,
@@ -85,31 +117,12 @@ function OrdersTooltip({
   if (!active || !point) return null
 
   return (
-    <div className={cn(TOOLTIP_BOX, "w-[268px] gap-2")}>
+    <div className={cn(TOOLTIP_BOX, "w-[280px] gap-1.5")}>
       <TooltipHead
         title={point.full}
         value={`${fmtNum(point.leads)} ${plural(point.leads, "лід", "ліди", "лідів")}`}
       />
-
-      {/* the drawn categories, as the column stacks them. What each one is made
-          of is the rail's job - a hover is for reading the column, not for
-          scrolling a status list */}
-      {bars.map((c) => (
-        <div key={c.key} className="flex items-center gap-2">
-          <Mark mark="bar" color={c.color} />
-          <span className="font-medium">{c.label}</span>
-          <span className="ml-auto shrink-0 font-medium tabular-nums">
-            {fmtNum(point[c.key])}
-          </span>
-          <span className="w-9 shrink-0 text-right text-muted-foreground tabular-nums">
-            {pct(point[c.key], point.leads)}
-          </span>
-        </div>
-      ))}
-
-      {/* the counts are spelled out above, category by category - what the
-          block under the chart adds is the rates the column is read at */}
-      <TooltipTiles tiles={orderTiles(point).filter((t) => t.unit === "%")} />
+      <TooltipSeries rows={tooltipRows(point, bars)} />
     </div>
   )
 }

@@ -178,10 +178,10 @@ export function StatisticsPage() {
         <BreakdownTabs value={breakdown} onChange={pickBreakdown} />
       </div>
 
-      {/* the panel rides on the right of the chart; stacked, it goes on top -
-          the period comes before the thing it draws */}
-      <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
-        <div className="order-2 min-w-0 lg:order-1">
+      {/* the panel runs down the left of the chart; stacked, it goes on top -
+          either way the period comes before the thing it draws */}
+      <div className="grid items-start gap-4 lg:grid-cols-[300px_minmax(0,1fr)]">
+        <div className="order-2 min-w-0">
           {reloading ? (
             <ReportSkeleton />
           ) : incomeReport ? (
@@ -237,7 +237,7 @@ export function StatisticsPage() {
         {/* the header is sticky and 3.5rem tall, so the panel parks below it
             rather than sliding under it; with every group open it can outgrow
             the viewport, and then it scrolls inside itself */}
-        <div className="order-1 lg:sticky lg:top-20 lg:order-2 lg:max-h-[calc(100dvh-6rem)] lg:overflow-y-auto">
+        <div className="order-1 lg:sticky lg:top-20 lg:max-h-[calc(100dvh-6rem)] lg:overflow-y-auto">
           <FiltersPanel
             range={range}
             onRange={pickRange}

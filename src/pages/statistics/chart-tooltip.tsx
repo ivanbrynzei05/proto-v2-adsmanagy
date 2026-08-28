@@ -1,5 +1,6 @@
 /* eslint-disable react-refresh/only-export-components */
 import { cn } from "@/lib/utils"
+import { DetailRows, Mark, type SeriesRow } from "./series-rail"
 
 // The left and right margins every chart on the page draws with.
 const MARGIN_X = 4 + 12
@@ -35,6 +36,41 @@ export function tooltipBounds(axisWidth: number) {
  */
 export const TOOLTIP_BOX =
   "grid grid-cols-1 max-w-full rounded-lg border border-border/50 bg-background px-3 py-2.5 text-xs shadow-xl"
+
+/**
+ * The drawn series, for the column under the cursor — the rail's rows read at
+ * one point instead of over the period.
+ *
+ * The same shape in both places on purpose: a series carries its figure on the
+ * right and what it is made of underneath, so hovering a column answers exactly
+ * the questions the legend answers, at the same definitions and in the same
+ * order. Nothing here decides what a series is or what goes under it; that is
+ * the rows it was handed.
+ */
+export function TooltipSeries({ rows }: { rows: SeriesRow[] }) {
+  return (
+    <>
+      {rows.map((row) => (
+        <div key={row.key} className="grid grid-cols-1 gap-0.5">
+          <div className="flex items-center gap-2">
+            <Mark mark={row.mark} color={row.color} />
+            <span className="min-w-0 flex-1 truncate font-medium">
+              {row.label}
+            </span>
+            {row.value && (
+              <span className="ml-auto shrink-0 whitespace-nowrap font-medium tabular-nums">
+                {row.value}
+              </span>
+            )}
+          </div>
+          {row.detail && row.detail.length > 0 && (
+            <DetailRows rows={row.detail} />
+          )}
+        </div>
+      ))}
+    </>
+  )
+}
 
 /**
  * The title row: what the column is on the left, its headline figure on the

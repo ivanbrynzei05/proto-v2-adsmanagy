@@ -18,10 +18,14 @@ import type { DisplayCurrency } from "@/features/currency/types"
 import { cn } from "@/lib/utils"
 import { fmt } from "@/pages/campaigns/data"
 import { fmtNum } from "@/pages/dashboard/data"
-import { TOOLTIP_BOX, TooltipHead, tooltipBounds } from "./chart-tooltip"
+import {
+  TOOLTIP_BOX,
+  TooltipHead,
+  TooltipSeries,
+  tooltipBounds,
+} from "./chart-tooltip"
 import {
   COSTS,
-  incomeTiles,
   MONEY_LINES,
   PROFIT_SHARES,
   type IncomeReport,
@@ -29,10 +33,8 @@ import {
   type MoneyFigures,
   type MoneyPoint,
 } from "./data"
-import { TooltipTiles } from "./metric-tiles"
 import {
   drawn,
-  Mark,
   SeriesRail,
   toggleSeries,
   type SeriesRow,
@@ -99,36 +101,18 @@ function IncomeTooltip({
   const point = payload?.[0]?.payload
   if (!active || !point) return null
 
-  const tiles = [
-    { key: "ads", label: "Реклама", value: point.ads, unit: "₴" as const },
-    ...incomeTiles(point),
-  ]
+  // The rail's own rows, read at this point: every drawn line with its figure,
+  // and under each what it is made of. Реклама is one of those parts, so it
+  // needs no tile of its own any more.
+  const drawnKeys = lines.map((l) => l.key)
+  const rows = railRows(point, currency, true).filter((row) =>
+    drawnKeys.includes(row.key as LineKey)
+  )
 
   return (
-    <div className={cn(TOOLTIP_BOX, "w-[268px] gap-1.5")}>
+    <div className={cn(TOOLTIP_BOX, "w-[280px] gap-1.5")}>
       <TooltipHead title={point.full} />
-      {lines.map((l) => (
-        <div key={l.key} className="flex items-center gap-2">
-          <Mark mark={l.strong ? "strong" : "line"} color={l.color} />
-          <span
-            className={cn(
-              "min-w-0 flex-1 truncate",
-              l.strong ? "font-medium" : "text-muted-foreground"
-            )}
-          >
-            {l.label}
-          </span>
-          <span
-            className={cn(
-              "ml-auto shrink-0 whitespace-nowrap tabular-nums",
-              l.strong ? "font-bold" : "font-medium"
-            )}
-          >
-            {money(point[l.key], currency)}
-          </span>
-        </div>
-      ))}
-      <TooltipTiles tiles={tiles} currency={currency} />
+      <TooltipSeries rows={rows} />
     </div>
   )
 }
@@ -138,7 +122,9 @@ function IncomeTooltip({
 // while виручка and витрати have no home down there at all.
 function railRows(
   totals: MoneyFigures,
-  currency: DisplayCurrency
+  currency: DisplayCurrency,
+  /** a tooltip has no table under it, so there every line carries its figure */
+  everyFigure = false
 ): SeriesRow[] {
   const detail = detailOf(totals, currency)
   return MONEY_LINES.map((l) => ({
@@ -146,7 +132,10 @@ function railRows(
     label: l.label,
     color: l.color,
     mark: l.strong ? "strong" : "line",
-    value: l.key === PROFIT.key ? undefined : money(totals[l.key], currency),
+    value:
+      l.key === PROFIT.key && !everyFigure
+        ? undefined
+        : money(totals[l.key], currency),
     detail: detail[l.key],
   }))
 }
