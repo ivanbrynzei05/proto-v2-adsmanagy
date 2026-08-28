@@ -65,6 +65,11 @@ export function MetricTiles({ tiles }: { tiles: TileFigure[] }) {
  *
  * Both blocks are rendered from one list, so hovering a day answers the same
  * questions the period does, at the same definitions, without scrolling down.
+ *
+ * auto-fit rather than two fixed columns: a tooltip is barely wider than one
+ * of "Сума допродажів  123 456 ₴", and split in two those rows lose their
+ * labels to the ellipsis. The block takes a second column only where the box
+ * is actually wide enough for one, and stacks otherwise.
  */
 export function TooltipTiles({
   tiles,
@@ -75,7 +80,7 @@ export function TooltipTiles({
   currency?: DisplayCurrency
 }) {
   return (
-    <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 border-t pt-1.5 text-[11px]">
+    <div className="grid grid-cols-[repeat(auto-fit,minmax(150px,1fr))] gap-x-3 gap-y-0.5 border-t pt-1.5 text-[11px]">
       {tiles.map((t) => (
         <div key={t.key} className="flex items-baseline gap-1.5">
           <span className="min-w-0 flex-1 truncate text-muted-foreground">

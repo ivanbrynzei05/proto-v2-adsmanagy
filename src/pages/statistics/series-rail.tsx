@@ -15,10 +15,8 @@ export type SeriesRow = {
    * read there, never twice on the same screen.
    */
   value?: string
-  /** what the series is made of */
+  /** what the series is made of, in full - the rail scrolls, it does not cap */
   detail?: { label: string; value: string }[]
-  /** the rest of that list, named rather than listed - "+12 статусів" */
-  tail?: string
 }
 
 export function Mark({
@@ -95,6 +93,10 @@ export function DetailRows({
  * came to is read off the tiles and the table under the chart; the rail carries
  * a number only for a series that block has no room for, so nothing on the
  * screen is written down twice.
+ *
+ * The height is capped at every width, not only beside the chart: a category
+ * can be made of a hundred CRM statuses, and the rail scrolls inside itself
+ * rather than pushing the card down the page.
  */
 export function SeriesRail({
   rows,
@@ -106,7 +108,7 @@ export function SeriesRail({
   onToggle: (key: string) => void
 }) {
   return (
-    <div className="flex shrink-0 flex-col gap-1 border-t pt-3 text-xs xl:max-h-[300px] xl:w-[236px] xl:overflow-y-auto xl:border-t-0 xl:border-l xl:pt-0 xl:pl-3">
+    <div className="flex max-h-[300px] shrink-0 flex-col gap-1 overflow-y-auto overscroll-contain border-t pt-3 text-xs xl:w-[236px] xl:border-t-0 xl:border-l xl:pt-0 xl:pl-3">
       <div className="grid grid-cols-1 gap-1 sm:grid-cols-2 xl:grid-cols-1">
         {rows.map((row) => {
           const on = !hidden.includes(row.key)
@@ -142,16 +144,9 @@ export function SeriesRail({
                   </span>
                 )}
               </button>
-              {((row.detail && row.detail.length > 0) || row.tail) && (
-                <div className="grid grid-cols-1 gap-0.5 pb-1">
-                  {row.detail && row.detail.length > 0 && (
-                    <DetailRows rows={row.detail} />
-                  )}
-                  {row.tail && (
-                    <span className="pl-6 text-[11px] text-muted-foreground/70">
-                      {row.tail}
-                    </span>
-                  )}
+              {row.detail && row.detail.length > 0 && (
+                <div className="pb-1">
+                  <DetailRows rows={row.detail} />
                 </div>
               )}
             </div>

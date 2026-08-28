@@ -39,35 +39,31 @@ const CHART_CONFIG = {
   rejected: { label: "Відмови", color: "var(--st-rejected)" },
 } satisfies ChartConfig
 
-// how many statuses a category lists in the rail before the tail line
-const RAIL_STATUSES = 5
-
 /**
  * The rail, top-down in the order the column is stacked, with the CRM statuses
  * each category is made of under it - a column is a roll-up of статуси, and
- * this is the one place on the screen they are read against their colour. The
- * counts themselves are tiles under the chart, so no row here carries a figure
- * of its own.
+ * this is the one place on the screen they are read against their colour.
+ *
+ * Every status the period carried, not a top few: a name behind a "+12
+ * статусів" is a name nobody can look up, and the rail scrolls inside itself
+ * rather than growing the card. The counts of the categories themselves are
+ * tiles under the chart, so no row here carries a figure of its own.
  */
 function railRows(report: OrdersReport): SeriesRow[] {
   return [
     { key: LEADS.key, label: LEADS.label, color: LEADS.color, mark: "line" },
-    ...[...CATEGORIES].reverse().map((c): SeriesRow => {
-      const list = report.statusTotals[c.key]
-      const shown = list.slice(0, RAIL_STATUSES)
-      const rest = list.length - shown.length
-      return {
+    ...[...CATEGORIES].reverse().map(
+      (c): SeriesRow => ({
         key: c.key,
         label: c.label,
         color: c.color,
         mark: "bar",
-        detail: shown.map((s) => ({ label: s.name, value: fmtNum(s.value) })),
-        tail:
-          rest > 0
-            ? `+${rest} ${plural(rest, "статус", "статуси", "статусів")}`
-            : undefined,
-      }
-    }),
+        detail: report.statusTotals[c.key].map((s) => ({
+          label: s.name,
+          value: fmtNum(s.value),
+        })),
+      })
+    ),
   ]
 }
 
@@ -110,17 +106,6 @@ function OrdersTooltip({
           </span>
         </div>
       ))}
-
-      <div className="flex items-center gap-2 border-t pt-1.5">
-        <span className="size-2.5 shrink-0 rounded-[2px] border border-dashed border-muted-foreground/60" />
-        <span className="text-muted-foreground">Ще в роботі</span>
-        <span className="ml-auto shrink-0 font-medium tabular-nums">
-          {fmtNum(point.inWork)}
-        </span>
-        <span className="w-9 shrink-0 text-right text-muted-foreground tabular-nums">
-          {pct(point.inWork, point.leads)}
-        </span>
-      </div>
 
       {/* the counts are spelled out above, category by category - what the
           block under the chart adds is the rates the column is read at */}
@@ -170,10 +155,13 @@ function Plot({
           content={<OrdersTooltip bars={bars} />}
         />
         {/* stacked bottom-up: the money on the baseline, the losses capping the
-            column. The card-coloured stroke is what keeps a 2px gap between two
-            touching segments. */}
+            column. Every segment is rounded on all four corners, not just the
+            one on top - together with the card-coloured stroke that puts a 2px
+            gap between two touching ones, the column reads as the few pieces it
+            is made of rather than as one bar with a cap. Recharts holds the
+            radius to half the segment, so a thin slice stays a thin slice. */}
         {CATEGORIES.filter((c) => bars.some((b) => b.key === c.key)).map(
-          (c, i, kept) => (
+          (c) => (
             <Bar
               key={c.key}
               dataKey={c.key}
@@ -182,11 +170,7 @@ function Plot({
               stroke="var(--card)"
               strokeWidth={2}
               maxBarSize={26}
-              radius={
-                i === kept.length - 1
-                  ? ([4, 4, 0, 0] as [number, number, number, number])
-                  : undefined
-              }
+              radius={4}
             />
           )
         )}

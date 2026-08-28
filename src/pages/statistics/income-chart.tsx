@@ -31,7 +31,6 @@ import {
 } from "./data"
 import { TooltipTiles } from "./metric-tiles"
 import {
-  DetailRows,
   drawn,
   Mark,
   SeriesRail,
@@ -52,24 +51,21 @@ function money(value: number, currency: DisplayCurrency) {
 }
 
 /**
- * What each line is made of, for one column or for the whole period.
+ * What each line is made of, over the whole period - the rail's own rows.
  *
  * Маржинальність is not here: it is a tile under the chart, and so is every
- * rate the block below carries. Реклама is a column of that block's table, so
- * the rail leaves it out too - but a single bucket has no row down there, which
- * is why the tooltip still opens витрати up in full.
+ * rate the block below carries. Реклама is a column of that block's table.
  */
 function detailOf(
   figures: MoneyFigures,
-  currency: DisplayCurrency,
-  withAds: boolean
+  currency: DisplayCurrency
 ): Record<LineKey, { label: string; value: string }[]> {
   return {
     sales: [
       { label: "Викуплені замовлення", value: fmtNum(figures.orders) },
       { label: "Середній чек", value: money(figures.avgCheck, currency) },
     ],
-    costs: COSTS.filter((c) => withAds || c.key !== "ads").map((c) => ({
+    costs: COSTS.filter((c) => c.key !== "ads").map((c) => ({
       label: c.label,
       value: money(figures[c.key], currency),
     })),
@@ -80,8 +76,15 @@ function detailOf(
   }
 }
 
-// One block per drawn line, then the same tiles the block under the chart
-// shows - read for this column alone rather than for the period.
+/**
+ * The drawn lines, then the same tiles the block under the chart shows - read
+ * for this column alone rather than for the period.
+ *
+ * What each line is made of is the rail's job. Opened up here as well, the box
+ * ran past the bottom of the plot and its rows lost their labels to the
+ * ellipsis; the one figure the block below has no room for - what the bucket
+ * spent on рекламу - leads the tiles instead.
+ */
 function IncomeTooltip({
   active,
   payload,
@@ -95,36 +98,37 @@ function IncomeTooltip({
 }) {
   const point = payload?.[0]?.payload
   if (!active || !point) return null
-  const detail = detailOf(point, currency, true)
+
+  const tiles = [
+    { key: "ads", label: "Реклама", value: point.ads, unit: "₴" as const },
+    ...incomeTiles(point),
+  ]
 
   return (
-    <div className={cn(TOOLTIP_BOX, "w-[268px] gap-2")}>
+    <div className={cn(TOOLTIP_BOX, "w-[268px] gap-1.5")}>
       <TooltipHead title={point.full} />
       {lines.map((l) => (
-        <div key={l.key} className="grid grid-cols-1 gap-1">
-          <div className="flex items-center gap-2">
-            <Mark mark={l.strong ? "strong" : "line"} color={l.color} />
-            <span
-              className={cn(
-                "min-w-0 flex-1 truncate",
-                l.strong ? "font-medium" : "text-muted-foreground"
-              )}
-            >
-              {l.label}
-            </span>
-            <span
-              className={cn(
-                "ml-auto shrink-0 whitespace-nowrap tabular-nums",
-                l.strong ? "font-bold" : "font-medium"
-              )}
-            >
-              {money(point[l.key], currency)}
-            </span>
-          </div>
-          <DetailRows rows={detail[l.key]} />
+        <div key={l.key} className="flex items-center gap-2">
+          <Mark mark={l.strong ? "strong" : "line"} color={l.color} />
+          <span
+            className={cn(
+              "min-w-0 flex-1 truncate",
+              l.strong ? "font-medium" : "text-muted-foreground"
+            )}
+          >
+            {l.label}
+          </span>
+          <span
+            className={cn(
+              "ml-auto shrink-0 whitespace-nowrap tabular-nums",
+              l.strong ? "font-bold" : "font-medium"
+            )}
+          >
+            {money(point[l.key], currency)}
+          </span>
         </div>
       ))}
-      <TooltipTiles tiles={incomeTiles(point)} currency={currency} />
+      <TooltipTiles tiles={tiles} currency={currency} />
     </div>
   )
 }
@@ -136,13 +140,13 @@ function railRows(
   totals: MoneyFigures,
   currency: DisplayCurrency
 ): SeriesRow[] {
-  const detail = detailOf(totals, currency, false)
+  const detail = detailOf(totals, currency)
   return MONEY_LINES.map((l) => ({
     key: l.key,
     label: l.label,
     color: l.color,
     mark: l.strong ? "strong" : "line",
-    value: l.key === "profit" ? undefined : money(totals[l.key], currency),
+    value: l.key === PROFIT.key ? undefined : money(totals[l.key], currency),
     detail: detail[l.key],
   }))
 }
@@ -206,9 +210,9 @@ export function IncomeReportCard({
                   {/* дохід is the line the page is about: it carries a fill
                       under it and a heavier stroke, while виручка and витрати
                       stay thin lines that frame it */}
-                  {lines.some((l) => l.key === "profit") && (
+                  {lines.some((l) => l.key === PROFIT.key) && (
                     <Area
-                      dataKey="profit"
+                      dataKey={PROFIT.key}
                       type="monotone"
                       stroke="none"
                       fill={PROFIT.color}

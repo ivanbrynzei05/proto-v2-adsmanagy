@@ -116,24 +116,6 @@ export function OrdersMetricsCard({
                     )}
                   </Fragment>
                 ))}
-                {/* the orders no status maps into - the gap under the ліди line */}
-                <TableRow className="border-t-2 hover:bg-transparent">
-                  <TableCell className="px-2 py-2">
-                    <span className="flex items-center gap-2 font-semibold">
-                      <span className="size-2.5 shrink-0 rounded-[2px] border border-dashed border-muted-foreground/60" />
-                      Ще в роботі
-                    </span>
-                  </TableCell>
-                  <TableCell className="px-2 py-2 text-right font-semibold tabular-nums">
-                    {fmtNum(totals.inWork)}
-                  </TableCell>
-                  <TableCell className="px-2 py-2 text-right text-muted-foreground tabular-nums">
-                    —
-                  </TableCell>
-                  <TableCell className="px-2 py-2 text-right font-semibold tabular-nums">
-                    {pct(totals.inWork, totals.leads)}
-                  </TableCell>
-                </TableRow>
               </TableBody>
             </Table>
           </div>

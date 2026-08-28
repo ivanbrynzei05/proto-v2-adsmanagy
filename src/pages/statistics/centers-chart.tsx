@@ -182,8 +182,10 @@ export function CentersReportCard({
                     }
                   />
                   {/* one segment per centre - the column is the day's апрув,
-                      cut by who confirmed it */}
-                  {bars.map((c, i) => (
+                      cut by who confirmed it. Each is rounded on all four
+                      corners, so the column reads as the centres it is made of
+                      rather than as one bar with a cap. */}
+                  {bars.map((c) => (
                     <Bar
                       key={c.id}
                       dataKey={readers.get(c.id)}
@@ -193,11 +195,7 @@ export function CentersReportCard({
                       stroke="var(--card)"
                       strokeWidth={2}
                       maxBarSize={26}
-                      radius={
-                        i === bars.length - 1
-                          ? ([4, 4, 0, 0] as [number, number, number, number])
-                          : undefined
-                      }
+                      radius={4}
                     />
                   ))}
                   {line && (
