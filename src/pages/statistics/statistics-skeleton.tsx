@@ -30,7 +30,7 @@ function ChartCardSkeleton() {
                 {BARS.map((h, i) => (
                   <Skeleton
                     key={i}
-                    className="max-w-[26px] min-w-0 flex-1 rounded-t-[4px] rounded-b-none"
+                    className="max-w-[26px] min-w-0 flex-1 rounded-[4px]"
                     style={{ height: `${h}%` }}
                   />
                 ))}
@@ -129,13 +129,17 @@ const TABS = [46, 88, 80, 66, 54]
 function PanelSkeleton() {
   return (
     <Card className="gap-0 divide-y py-0">
-      <section className="flex flex-col gap-2 px-4 py-3.5">
-        <div className="flex items-center justify-between gap-2">
-          <Skeleton className="h-2.5 w-14" />
-          <Skeleton className="h-2.5 w-16" />
-        </div>
+      {/* the two banded headers the real panel is split by, and the period
+          control under the first of them */}
+      <div className="bg-muted/50 px-4 py-2.5">
+        <Skeleton className="h-2.5 w-14" />
+      </div>
+      <section className="px-4 py-3.5">
         <Skeleton className="h-9 w-full rounded-md" />
       </section>
+      <div className="bg-muted/50 px-4 py-2.5">
+        <Skeleton className="h-2.5 w-16" />
+      </div>
       <section className="flex flex-col divide-y px-4">
         {[64, 36].map((w, i) => (
           <div key={i} className="flex items-center gap-2 py-3">
@@ -155,9 +159,9 @@ export function StatisticsSkeleton() {
     <div className="mx-auto flex w-full max-w-[1340px] flex-col gap-4 p-4 md:p-6">
       <div className="flex flex-col gap-3">
         <Skeleton className="h-6 w-28" />
-        <div className="flex w-fit max-w-full gap-0.5 rounded-lg border bg-muted/60 p-0.5">
+        <div className="flex w-fit max-w-full gap-1 rounded-md bg-foreground/[0.07] p-1">
           {TABS.map((w, i) => (
-            <div key={i} className="grid h-8 place-items-center px-3.5">
+            <div key={i} className="grid h-8 place-items-center px-3">
               <Skeleton className="h-2.5" style={{ width: w }} />
             </div>
           ))}

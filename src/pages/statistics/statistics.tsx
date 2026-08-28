@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 
 import { useIntegrations } from "@/components/integrations-provider"
+import { useTeam } from "@/components/team-provider"
 import { CRM_TYPES } from "@/features/integrations/types"
 import {
   addDays,
@@ -36,6 +37,9 @@ import { ProductsMetricsCard } from "./products-metrics"
 
 export function StatisticsPage() {
   const { connectedCrms, callCenters } = useIntegrations()
+  // the team is a scope on the report, not a source: a lead or the owner reads
+  // the same breakdowns for one buyer instead of for the whole account
+  const { members } = useTeam()
   const today = useMemo(() => startOfDay(new Date()), [])
   const [range, setRange] = useState<DateRange>(() => ({
     from: addDays(today, -6),
@@ -103,8 +107,10 @@ export function StatisticsPage() {
 
   const incomeReport = useMemo(
     () =>
-      breakdown === "income" ? buildIncomeReport(range, step, filters) : null,
-    [breakdown, range, step, filters]
+      breakdown === "income"
+        ? buildIncomeReport(range, step, filters, members)
+        : null,
+    [breakdown, range, step, filters, members]
   )
 
   // The CRMs the account has connected are what the columns are cut by; without
@@ -133,30 +139,33 @@ export function StatisticsPage() {
   const ordersReport = useMemo(
     () =>
       breakdown === "orders"
-        ? buildOrdersReport(range, step, filters, pickedCrms)
+        ? buildOrdersReport(range, step, filters, pickedCrms, members)
         : null,
-    [breakdown, range, step, filters, pickedCrms]
+    [breakdown, range, step, filters, pickedCrms, members]
   )
 
   const centersReport = useMemo(
     () =>
       breakdown === "callcenters"
-        ? buildCentersReport(range, step, filters, callCenters)
+        ? buildCentersReport(range, step, filters, callCenters, members)
         : null,
-    [breakdown, range, step, filters, callCenters]
+    [breakdown, range, step, filters, callCenters, members]
   )
 
   const productsReport = useMemo(
     () =>
       breakdown === "products"
-        ? buildProductsReport(range, step, filters)
+        ? buildProductsReport(range, step, filters, members)
         : null,
-    [breakdown, range, step, filters]
+    [breakdown, range, step, filters, members]
   )
 
   const adsReport = useMemo(
-    () => (breakdown === "ads" ? buildAdsReport(range, step, filters) : null),
-    [breakdown, range, step, filters]
+    () =>
+      breakdown === "ads"
+        ? buildAdsReport(range, step, filters, members)
+        : null,
+    [breakdown, range, step, filters, members]
   )
 
   if (firstLoad) return <StatisticsSkeleton />
@@ -236,6 +245,7 @@ export function StatisticsPage() {
             onFilters={pickFilters}
             crmOptions={crmOptions}
             centerOptions={centerPicks}
+            members={members}
           />
         </div>
       </div>

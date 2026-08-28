@@ -10,6 +10,7 @@ import {
   type ConnectedCrm,
   type CrmStatusOption,
 } from "@/features/integrations/types"
+import { DEFAULT_MEMBERS, type TeamMember } from "@/features/team/types"
 import {
   AD_ACCOUNTS,
   CAMPAIGNS,
@@ -854,12 +855,13 @@ export function buildProductsReport(
   range: DateRange,
   step: Step,
   filters: ReportFilters = EMPTY_FILTERS,
+  team: TeamMember[] = DEFAULT_MEMBERS,
   now: Date = new Date()
 ): ProductsReport {
   const resolved = resolveStep(step, range)
   const starts = bucketStarts(range, resolved, now)
   const hours = STEPS.find((s) => s.id === resolved)?.hours ?? 24
-  const trafficRatio = trafficShare(filters)
+  const trafficRatio = trafficShare(filters, team)
 
   // A picked catalogue is the report; otherwise it is the slice this period
   // touches. Picking wins over the period so a product stays on screen even
@@ -1264,16 +1266,17 @@ export function buildAdsReport(
   range: DateRange,
   step: Step,
   filters: ReportFilters = EMPTY_FILTERS,
+  team: TeamMember[] = DEFAULT_MEMBERS,
   now: Date = new Date()
 ): AdsReport {
   const resolved = resolveStep(step, range)
   const starts = bucketStarts(range, resolved, now)
   const hours = STEPS.find((s) => s.id === resolved)?.hours ?? 24
-  const trafficRatio = trafficShare(filters)
+  const trafficRatio = trafficShare(filters, team)
 
   // the campaigns this period touches, then only those the panel leaves
   // standing: the right cabinet, the right state, selling a picked product
-  const kept = new Set(matchingAccounts(filters).map((a) => a.id))
+  const kept = new Set(matchingAccounts(filters, team).map((a) => a.id))
   const states = new Set(filters.states)
   const products = new Set(filters.products)
   const profiles = campaignProfiles()
@@ -1656,13 +1659,14 @@ export function buildCentersReport(
   step: Step,
   filters: ReportFilters = EMPTY_FILTERS,
   centers: CallCenter[] = [],
+  team: TeamMember[] = DEFAULT_MEMBERS,
   now: Date = new Date()
 ): CentersReport {
   const resolved = resolveStep(step, range)
   const starts = bucketStarts(range, resolved, now)
   const hours = STEPS.find((s) => s.id === resolved)?.hours ?? 24
   const profiles = centerProfiles(centers, filters.centers)
-  const trafficRatio = trafficShare(filters)
+  const trafficRatio = trafficShare(filters, team)
 
   const sums = profiles.map(emptyCenterSums)
 
@@ -1900,8 +1904,8 @@ const TOTAL_WEIGHT = ACCOUNTS.reduce((a, x) => a + x.weight, 0)
 // How much of the account's traffic the current filter leaves standing. Both
 // breakdowns scale by it, so "тільки TikTok" means the same number of leads on
 // the Дохід chart and on the Замовлення one.
-function trafficShare(filters: ReportFilters) {
-  const kept = matchingAccounts(filters).map((a) => a.id)
+function trafficShare(filters: ReportFilters, team: TeamMember[]) {
+  const kept = matchingAccounts(filters, team).map((a) => a.id)
   const weight = ACCOUNTS.filter((x) => kept.includes(x.account.id)).reduce(
     (a, x) => a + x.weight,
     0
@@ -1927,6 +1931,12 @@ export type ReportFilters = {
   centers: string[]
   /** CRM labels, as the integrations provider spells them */
   crms: string[]
+  /**
+   * Team member ids the report is read for - a lead or the owner looking at
+   * one buyer's numbers instead of the whole account's. Empty is the account
+   * itself, which is what "усі" on the picker says.
+   */
+  members: string[]
 }
 
 export const EMPTY_FILTERS: ReportFilters = {
@@ -1937,6 +1947,7 @@ export const EMPTY_FILTERS: ReportFilters = {
   products: [],
   centers: [],
   crms: [],
+  members: [],
 }
 
 /** the whole catalogue, for the product picker in the panel */
@@ -1945,14 +1956,71 @@ export const PRODUCT_OPTIONS: { id: string; name: string }[] = CATALOGUE
 const passes = (list: string[], value: string) =>
   list.length === 0 || list.includes(value)
 
+/**
+ * Which cabinets each member runs.
+ *
+ * Nothing stores that ownership - Інтеграції only counts how many cabinets a
+ * buyer has - so the demo hands them out round robin over the buyers in the
+ * team's own order. A buyer past the end of the cabinet list shares one rather
+ * than getting none: a picked member with nothing under them would draw a
+ * report of zeros, which reads as a broken page rather than as an answer.
+ *
+ * A lead owns no traffic of their own; what they answer for is their buyers',
+ * so picking a lead is picking that group. A lead with no buyers yet is the one
+ * case that really is empty, and the report says so in zeros.
+ */
+function accountsByMember(team: TeamMember[]) {
+  const buyers = team.filter((m) => m.role === "buyer")
+  const owned = new Map<string, string[]>()
+
+  buyers.forEach((buyer, i) => {
+    const mine = AD_ACCOUNTS.filter((_, n) => n % buyers.length === i).map(
+      (a) => a.id
+    )
+    owned.set(
+      buyer.id,
+      mine.length ? mine : [AD_ACCOUNTS[i % AD_ACCOUNTS.length].id]
+    )
+  })
+
+  for (const lead of team) {
+    if (lead.role === "buyer") continue
+    owned.set(
+      lead.id,
+      buyers
+        .filter((b) => b.leadId === lead.id)
+        .flatMap((b) => owned.get(b.id) ?? [])
+    )
+  }
+
+  return owned
+}
+
+/** the cabinets the picked members run between them, without repeats */
+export function accountsOfMembers(ids: string[], team: TeamMember[]) {
+  const owned = accountsByMember(team)
+  return [...new Set(ids.flatMap((id) => owned.get(id) ?? []))]
+}
+
 // The cabinets a report is built from, and the same predicate the picker uses
-// to grey out cabinets that no longer fit the platforms above them.
-export function matchingAccounts(filters: ReportFilters) {
+// to grey out cabinets that no longer fit the platforms above them - or the
+// people it is being read for.
+export function matchingAccounts(
+  filters: ReportFilters,
+  team: TeamMember[] = DEFAULT_MEMBERS
+) {
+  // an empty set is a real answer here, unlike an empty filter list: it means
+  // the picked people run nothing, not that nothing was picked
+  const scope = filters.members.length
+    ? new Set(accountsOfMembers(filters.members, team))
+    : null
+
   return AD_ACCOUNTS.filter(
     (a) =>
       passes(filters.platforms, a.platform) &&
       passes(filters.portfolios, a.business) &&
-      passes(filters.accounts, a.id)
+      passes(filters.accounts, a.id) &&
+      (!scope || scope.has(a.id))
   )
 }
 
@@ -2061,13 +2129,14 @@ export function buildIncomeReport(
   range: DateRange,
   step: Step,
   filters: ReportFilters = EMPTY_FILTERS,
+  team: TeamMember[] = DEFAULT_MEMBERS,
   now: Date = new Date()
 ): IncomeReport {
   const resolved = resolveStep(step, range)
   const starts = bucketStarts(range, resolved, now)
   const hours = STEPS.find((s) => s.id === resolved)?.hours ?? 24
 
-  const kept = matchingAccounts(filters).map((a) => a.id)
+  const kept = matchingAccounts(filters, team).map((a) => a.id)
   const selected = ACCOUNTS.filter((x) => kept.includes(x.account.id))
   const keptWeight = selected.reduce((a, x) => a + x.weight, 0)
 
@@ -2180,6 +2249,7 @@ export function buildOrdersReport(
   step: Step,
   filters: ReportFilters = EMPTY_FILTERS,
   crms: ConnectedCrm[] = [],
+  team: TeamMember[] = DEFAULT_MEMBERS,
   now: Date = new Date()
 ): OrdersReport {
   const resolved = resolveStep(step, range)
@@ -2187,7 +2257,7 @@ export function buildOrdersReport(
   const starts = bucketStarts(range, resolved, now)
   const hours = STEPS.find((s) => s.id === resolved)?.hours ?? 24
   // the same traffic the Дохід breakdown would draw for these filters
-  const trafficRatio = trafficShare(filters)
+  const trafficRatio = trafficShare(filters, team)
 
   const points = starts.map((start, i): OrdersPoint => {
     const leads = Math.round(

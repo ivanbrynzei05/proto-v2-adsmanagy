@@ -5,6 +5,7 @@ import {
   IconPackage,
   IconSearch,
   IconSpeakerphone,
+  IconUsers,
 } from "@tabler/icons-react"
 import { useState } from "react"
 
@@ -19,6 +20,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { roleInfo, type TeamMember } from "@/features/team/types"
 import { cn } from "@/lib/utils"
 import {
   AD_ACCOUNTS,
@@ -234,6 +236,7 @@ export function FiltersPanel({
   onFilters,
   crmOptions,
   centerOptions,
+  members,
 }: {
   range: DateRange
   onRange: (r: DateRange) => void
@@ -243,22 +246,32 @@ export function FiltersPanel({
   crmOptions: { id: string; name: string }[]
   /** the call centres the report is built from, connected or demo */
   centerOptions: { id: string; name: string }[]
+  /** everyone the account gave access to - empty on a one-person account */
+  members: TeamMember[]
 }) {
   // everything ticked across every group, for the badge on the band
   const active = Object.values(filters).reduce(
     (a, list) => a + (list as string[]).length,
     0
   )
-  // a cabinet that the platforms above it rule out is shown, but greyed - the
-  // list is how you see which cabinets a platform even has
-  const reachable = matchingAccounts({ ...filters, accounts: [] }).map(
+  // a cabinet that the platforms above it - or the people the report is read
+  // for - rule out is shown, but greyed: the list is how you see which cabinets
+  // a platform even has
+  const reachable = matchingAccounts({ ...filters, accounts: [] }, members).map(
     (a) => a.id
   )
 
   return (
     <Card className="gap-0 divide-y py-0">
-      <section className="flex flex-col gap-2 px-4 py-3.5">
+      {/* Both halves of the panel are headed the same way: a band with the
+          section's name on it, and what it holds under it. The period is still
+          not one of the filters - the split into two sections is what says so,
+          rather than one of the two names being set differently from the
+          other. */}
+      <div className="flex items-center gap-2 bg-muted/50 px-4 py-2.5">
         <SectionTitle>Період</SectionTitle>
+      </div>
+      <section className="px-4 py-3.5">
         <DateRangePicker
           value={range}
           onChange={onRange}
@@ -266,8 +279,6 @@ export function FiltersPanel({
         />
       </section>
 
-      {/* the filters get a band of their own so the period above them reads as
-          the frame of the report rather than as the first filter in the list */}
       <div className="flex items-center gap-2 bg-muted/50 px-4 py-2.5">
         <SectionTitle>Фільтри</SectionTitle>
         {active > 0 && (
@@ -290,6 +301,39 @@ export function FiltersPanel({
           appearing and disappearing with the tabs. Folded by default, and open
           on its own the moment it is narrowing something. */}
       <section className="flex flex-col divide-y px-4">
+        {/* Whose numbers these are comes before what they are cut by: a lead
+            reads the report for one buyer, and every group under this one then
+            narrows that person's traffic rather than the account's. A team of
+            nobody has nothing to pick, so the group is not drawn at all. */}
+        {members.length > 0 && (
+          <FilterGroup
+            title="Команда"
+            icon={IconUsers}
+            count={filters.members.length}
+            onClear={() => onFilters({ ...filters, members: [] })}
+          >
+            {/* the role is the icon rather than a second line: picking a lead
+                is picking the buyers under them, and that is the difference
+                between the two rows a reader needs to see */}
+            <SourcePicker
+              label="Користувачі"
+              options={members.map((m) => {
+                const Icon = roleInfo(m.role).icon
+                return {
+                  id: m.id,
+                  name: m.name,
+                  icon: <Icon className="size-3.5 text-muted-foreground" />,
+                }
+              })}
+              selected={filters.members}
+              onToggle={(id) =>
+                onFilters({ ...filters, members: toggle(filters.members, id) })
+              }
+              onClear={() => onFilters({ ...filters, members: [] })}
+            />
+          </FilterGroup>
+        )}
+
         <FilterGroup
           title="Реклама"
           icon={IconSpeakerphone}
