@@ -3,7 +3,8 @@
     "allow": [
       "Bash('/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' --headless=new --disable-gpu --hide-scrollbars --force-device-scale-factor=2 --window-size=1440,1700 --virtual-time-budget=2500 --screenshot=/private/tmp/claude-501/-Users-vanabrinzej-Desktop-dashboard-app/fe583ab5-b82c-4bc3-b192-377e6e70c733/scratchpad/privacy2.png 'http://localhost:5175/proto-v2-adsmanagy/#/legal/privacy')",
       "Bash(npx tsc *)",
-      "Bash(npx prettier *)"
+      "Bash(npx prettier *)",
+      "Bash(node -e \"const s=require\\('fs'\\).readFileSync\\('src/pages/campaigns/data.ts','utf8'\\);const m=s.match\\(/export const AD_ACCOUNTS[\\\\s\\\\S]*?\\\\n\\\\]/\\)[0];console.log\\(\\(m.match\\(/id: \\\\\"/g\\)||[]\\).length\\)\")"
     ]
   }
 }

@@ -168,11 +168,17 @@ export function StatisticsSkeleton() {
         </div>
       </div>
 
-      <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
-        <div className="order-2 min-w-0 lg:order-1">
+      <div className="grid items-start gap-4 lg:grid-cols-[300px_minmax(0,1fr)]">
+        <div className="order-2 min-w-0">
           <ReportSkeleton />
         </div>
-        <div className="order-1 lg:order-2">
+        {/* a phone has no panel to wait for - only the period and the button
+            that opens the filter sheet, which is what the bar stands in for */}
+        <div className="order-1 flex items-center gap-2 md:hidden">
+          <Skeleton className="h-9 min-w-0 flex-1 rounded-md" />
+          <Skeleton className="h-9 w-24 shrink-0 rounded-md" />
+        </div>
+        <div className="order-1 max-md:hidden">
           <PanelSkeleton />
         </div>
       </div>

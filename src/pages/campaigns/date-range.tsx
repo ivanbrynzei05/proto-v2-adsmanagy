@@ -232,10 +232,15 @@ export function DateRangePicker({
   value,
   onChange,
   className,
+  // filled by default, which is what reads as a control inside a card; standing
+  // on the page itself it needs the outline's border to not sink into the
+  // background
+  variant = "secondary",
 }: {
   value: DateRange
   onChange: (r: DateRange) => void
   className?: string
+  variant?: "secondary" | "outline"
 }) {
   const [open, setOpen] = useState(false)
   // bumped on every open so the panel remounts and snaps back to the committed
@@ -253,7 +258,7 @@ export function DateRangePicker({
       <PopoverTrigger
         render={
           <Button
-            variant="secondary"
+            variant={variant}
             size="sm"
             className={cn("gap-1.5", className)}
           >

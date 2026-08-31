@@ -1950,6 +1950,32 @@ export const EMPTY_FILTERS: ReportFilters = {
   members: [],
 }
 
+/**
+ * Everything ticked across every category - the badge the panel's Фільтри band
+ * carries, and the one on the button a phone opens the filter sheet with.
+ */
+export function countFilters(filters: ReportFilters) {
+  return Object.values(filters).reduce(
+    (total, list) => total + (list as string[]).length,
+    0
+  )
+}
+
+/**
+ * Whether two sets of filters would build the same report.
+ *
+ * Ticking a box off and back on leaves the list in a different order carrying
+ * the same answer, so the lists are compared as sets - otherwise Застосувати
+ * would light up for a change that is not one.
+ */
+export function sameFilters(a: ReportFilters, b: ReportFilters) {
+  return (Object.keys(a) as (keyof ReportFilters)[]).every((key) => {
+    const one = a[key] as string[]
+    const two = b[key] as string[]
+    return one.length === two.length && one.every((v) => two.includes(v))
+  })
+}
+
 /** the whole catalogue, for the product picker in the panel */
 export const PRODUCT_OPTIONS: { id: string; name: string }[] = CATALOGUE
 

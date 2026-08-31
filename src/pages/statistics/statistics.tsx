@@ -1,8 +1,12 @@
+import { IconFilter } from "@tabler/icons-react"
 import { useEffect, useMemo, useRef, useState } from "react"
 
 import { useIntegrations } from "@/components/integrations-provider"
 import { useTeam } from "@/components/team-provider"
+import { Button } from "@/components/ui/button"
 import { CRM_TYPES } from "@/features/integrations/types"
+import { useIsMobile } from "@/hooks/use-mobile"
+import { DateRangePicker } from "@/pages/campaigns/date-range"
 import {
   addDays,
   startOfDay,
@@ -15,6 +19,7 @@ import {
   buildIncomeReport,
   buildOrdersReport,
   buildProductsReport,
+  countFilters,
   DEFAULT_ADS_HIDDEN,
   EMPTY_FILTERS,
   stepFor,
@@ -23,6 +28,7 @@ import {
 } from "./data"
 import { BreakdownTabs } from "./breakdown-tabs"
 import { FiltersPanel } from "./filters-panel"
+import { StatisticsFiltersSheet } from "./filters-sheet"
 import { ReportSkeleton, StatisticsSkeleton } from "./statistics-skeleton"
 import { IncomeReportCard } from "./income-chart"
 import { IncomeMetricsCard } from "./income-metrics"
@@ -37,6 +43,15 @@ import { ProductsMetricsCard } from "./products-metrics"
 
 export function StatisticsPage() {
   const { connectedCrms, callCenters } = useIntegrations()
+  // a phone gets the period on the page and one "Фільтри" button next to it,
+  // with the panel's groups slid up from the bottom instead of stacked above
+  // the chart - the same trade the campaigns table makes
+  const isMobile = useIsMobile()
+  const [filtersOpen, setFiltersOpen] = useState(false)
+  // A window dragged past the breakpoint takes the sheet off the page with it,
+  // and an open flag left standing behind would slide it back up on its own the
+  // next time the page narrows.
+  if (!isMobile && filtersOpen) setFiltersOpen(false)
   // the team is a scope on the report, not a source: a lead or the owner reads
   // the same breakdowns for one buyer instead of for the whole account
   const { members } = useTeam()
@@ -119,8 +134,12 @@ export function StatisticsPage() {
   const crmOptions = useMemo(
     () =>
       connectedCrms.length
-        ? connectedCrms.map((c) => ({ id: c.label, name: c.label }))
-        : CRM_TYPES.map((t) => ({ id: t, name: t })),
+        ? connectedCrms.map((c) => ({
+            id: c.label,
+            name: c.label,
+            type: c.type,
+          }))
+        : CRM_TYPES.map((t) => ({ id: t, name: t, type: t })),
     [connectedCrms]
   )
   // the centres the report will actually be built from - connected, or the demo
@@ -168,6 +187,9 @@ export function StatisticsPage() {
     [breakdown, range, step, filters, members]
   )
 
+  // what the "Фільтри" pill on a phone carries
+  const activeFilters = countFilters(filters)
+
   if (firstLoad) return <StatisticsSkeleton />
 
   return (
@@ -178,8 +200,9 @@ export function StatisticsPage() {
         <BreakdownTabs value={breakdown} onChange={pickBreakdown} />
       </div>
 
-      {/* the panel runs down the left of the chart; stacked, it goes on top -
-          either way the period comes before the thing it draws */}
+      {/* the panel runs down the left of the chart; stacked, it goes on top,
+          and on a phone it shrinks to the bar below - either way the period
+          comes before the thing it draws */}
       <div className="grid items-start gap-4 lg:grid-cols-[300px_minmax(0,1fr)]">
         <div className="order-2 min-w-0">
           {reloading ? (
@@ -234,21 +257,63 @@ export function StatisticsPage() {
           )}
         </div>
 
-        {/* the header is sticky and 3.5rem tall, so the panel parks below it
-            rather than sliding under it; with every group open it can outgrow
-            the viewport, and then it scrolls inside itself */}
-        <div className="order-1 lg:sticky lg:top-20 lg:max-h-[calc(100dvh-6rem)] lg:overflow-y-auto">
-          <FiltersPanel
-            range={range}
-            onRange={pickRange}
-            filters={filters}
-            onFilters={pickFilters}
-            crmOptions={crmOptions}
-            centerOptions={centerPicks}
-            members={members}
-          />
-        </div>
+        {/* on a phone the panel would push the chart a screen down, so only the
+            period stays out here - the groups are a tap away in the sheet.
+            Both controls are outlined: the page under them is bg-muted, which
+            a filled button is all but the same colour as, and the count on the
+            pill is what says the filters are doing something anyway. */}
+        {isMobile ? (
+          <div className="order-1 flex items-center gap-2">
+            <DateRangePicker
+              value={range}
+              onChange={pickRange}
+              variant="outline"
+              className="h-9 min-w-0 flex-1 justify-between"
+            />
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-9 shrink-0"
+              onClick={() => setFiltersOpen(true)}
+            >
+              <IconFilter className="size-4" />
+              Фільтри
+              {activeFilters > 0 && (
+                <span className="grid size-4.5 place-items-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground tabular-nums">
+                  {activeFilters}
+                </span>
+              )}
+            </Button>
+          </div>
+        ) : (
+          /* the header is sticky and 3.5rem tall, so the panel parks below it
+             rather than sliding under it; with every group open it can outgrow
+             the viewport, and then it scrolls inside itself */
+          <div className="order-1 lg:sticky lg:top-20 lg:max-h-[calc(100dvh-6rem)] lg:overflow-y-auto">
+            <FiltersPanel
+              range={range}
+              onRange={pickRange}
+              filters={filters}
+              onFilters={pickFilters}
+              crmOptions={crmOptions}
+              centerOptions={centerPicks}
+              members={members}
+            />
+          </div>
+        )}
       </div>
+
+      {isMobile && (
+        <StatisticsFiltersSheet
+          open={filtersOpen}
+          onOpenChange={setFiltersOpen}
+          filters={filters}
+          onFilters={pickFilters}
+          crmOptions={crmOptions}
+          centerOptions={centerPicks}
+          members={members}
+        />
+      )}
     </div>
   )
 }
