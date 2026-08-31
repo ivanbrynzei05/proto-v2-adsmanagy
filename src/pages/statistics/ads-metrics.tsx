@@ -1,3 +1,5 @@
+import { useRef } from "react"
+
 import { useCurrency } from "@/components/currency-provider"
 import { Card, CardContent } from "@/components/ui/card"
 import {
@@ -16,19 +18,19 @@ import { MetricTiles } from "./metric-tiles"
 import {
   NoMatchRow,
   SortHead,
+  TablePager,
   TableSearch,
   TOTAL,
   TOTAL_LINE,
   useTableView,
   type Column,
 } from "./table-controls"
-import { RowSpacer, TABLE_MAX_H, useVirtualRows } from "./virtual-rows"
 
 type Totals = AdsReport["totals"]
 
 // The table, column by column. Module-level so the sort keeps its reference
-// between renders - the memo behind it is what stops the virtual list from
-// snapping back to the top on every keystroke.
+// between renders - a fresh array every render would re-sort the whole list on
+// every keystroke elsewhere in the card.
 const COLUMNS: Column<CampaignStat, Totals>[] = [
   {
     key: "name",
@@ -45,9 +47,9 @@ const COLUMNS: Column<CampaignStat, Totals>[] = [
         >
           {c.name}
         </span>
-        {/* leading-none keeps the pill under the row's own line height - every
-            row has to be the same height for the virtual list to land where it
-            says */}
+        {/* leading-none keeps the pill under the row's own line height, so a
+            paused campaign does not sit a couple of pixels taller than the
+            rows around it */}
         {!c.active && (
           <span className="rounded-full bg-muted px-1.5 py-px text-[10px] leading-none font-medium text-muted-foreground">
             пауза
@@ -158,13 +160,7 @@ export function AdsMetricsCard({
   const { campaigns, totals } = report
   const cash = (value: number) => fmt(value, "₴", currency)
   const view = useTableView(campaigns, COLUMNS)
-  const {
-    onScroller,
-    onFirstRow,
-    rows: shown,
-    padTop,
-    padBottom,
-  } = useVirtualRows(view.rows)
+  const table = useRef<HTMLDivElement>(null)
 
   return (
     <Card className={cn("gap-0 py-4 [--card-spacing:16px]", className)}>
@@ -174,11 +170,8 @@ export function AdsMetricsCard({
         <TableSearch value={view.query} onChange={view.onQuery} />
 
         <div
-          ref={onScroller}
-          className={cn(
-            "-mx-(--card-spacing) overflow-auto overscroll-contain px-(--card-spacing)",
-            TABLE_MAX_H
-          )}
+          ref={table}
+          className="-mx-(--card-spacing) scroll-mt-20 overflow-x-auto px-(--card-spacing)"
         >
           <Table className="text-xs" containerClassName="overflow-x-visible">
             <TableHeader>
@@ -195,32 +188,28 @@ export function AdsMetricsCard({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {view.rows.length === 0 ? (
+              {view.pageRows.length === 0 ? (
                 <NoMatchRow span={COLUMNS.length} />
               ) : (
-                <>
-                  <RowSpacer height={padTop} span={COLUMNS.length} />
-                  {shown.map((c, i) => (
-                    <TableRow key={c.id} ref={i === 0 ? onFirstRow : undefined}>
-                      {COLUMNS.map((column, j) => (
-                        <TableCell
-                          key={column.key}
-                          className={cn(
-                            "px-2 py-2",
-                            j > 0 && "text-right tabular-nums",
-                            column.strong && "font-semibold",
-                            column.signed &&
-                              Number(column.sort(c)) < 0 &&
-                              "text-destructive"
-                          )}
-                        >
-                          {column.cell(c, cash)}
-                        </TableCell>
-                      ))}
-                    </TableRow>
-                  ))}
-                  <RowSpacer height={padBottom} span={COLUMNS.length} />
-                </>
+                view.pageRows.map((c) => (
+                  <TableRow key={c.id}>
+                    {COLUMNS.map((column, j) => (
+                      <TableCell
+                        key={column.key}
+                        className={cn(
+                          "px-2 py-2",
+                          j > 0 && "text-right tabular-nums",
+                          column.strong && "font-semibold",
+                          column.signed &&
+                            Number(column.sort(c)) < 0 &&
+                            "text-destructive"
+                        )}
+                      >
+                        {column.cell(c, cash)}
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                ))
               )}
               <TableRow className="hover:bg-transparent">
                 {COLUMNS.map((column, i) => (
@@ -235,6 +224,8 @@ export function AdsMetricsCard({
             </TableBody>
           </Table>
         </div>
+
+        <TablePager {...view.pager} anchor={table} />
       </CardContent>
     </Card>
   )

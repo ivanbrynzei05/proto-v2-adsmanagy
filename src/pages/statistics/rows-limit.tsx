@@ -4,8 +4,9 @@ import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { fmtNum } from "@/pages/dashboard/data"
 
-// The tail of a grouped table, behind one button. Flat lists scroll instead -
-// see ./virtual-rows.
+// The tail of a grouped table, behind one button. A grouped table cannot be
+// paged without cutting a category in half, which is why it gets this and the
+// flat ones get the pager - see ./table-controls.
 export function MoreRowsButton({
   hidden,
   expanded,

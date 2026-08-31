@@ -1,18 +1,31 @@
 /* eslint-disable react-refresh/only-export-components */
-import { IconChevronDown, IconSearch } from "@tabler/icons-react"
+import {
+  IconChevronDown,
+  IconChevronLeft,
+  IconChevronRight,
+  IconSearch,
+} from "@tabler/icons-react"
 import { useMemo, useState } from "react"
 
+import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { TableHead } from "@/components/ui/table"
 import { cn } from "@/lib/utils"
+import { fmtNum } from "@/pages/dashboard/data"
 
-// The table scrolls inside its card, so the head and the total stay put while
-// the list runs under them; both are pinned by their cells rather than by the
-// row, which is the part a collapsed border follows.
-export const HEAD = "sticky top-0 z-10 h-8 bg-card px-2 font-medium"
+// The head and the total row are ruled off by an inset shadow rather than a
+// border, so the line is drawn inside the cell box and does not add a pixel to
+// the row height the way a border on a collapsed table would.
+export const HEAD = "h-8 bg-card px-2 font-medium"
 export const HEAD_LINE = "shadow-[inset_0_-1px_0_0_var(--border)]"
-export const TOTAL =
-  "sticky bottom-0 z-10 bg-card px-2 py-2 font-semibold tabular-nums"
+export const TOTAL = "bg-card px-2 py-2 font-semibold tabular-nums"
 export const TOTAL_LINE = "shadow-[inset_0_2px_0_0_var(--border)]"
 
 /** money in the display currency - the column defs take it rather than a hook */
@@ -34,16 +47,21 @@ export type Column<Row, Totals> = {
 
 export type Sort = { key: string; dir: "asc" | "desc" }
 
+/** how many rows a page can be set to; the first is what a table opens on */
+export const PAGE_SIZES = [25, 50, 100] as const
+
 /**
- * Search and sort over a metrics table.
+ * Search, sort and page over a metrics table.
  *
  * A period can put thousands of products or campaigns in one list, and the
  * order the report builds them in only answers one question. Sorting asks the
  * others - where the ROI went negative, whose lead costs most - and the search
- * is the only way to reach a named row that is two thousand down.
+ * is the only way to reach a named row that is two thousand down. What is left
+ * after both is handed out a page at a time, so the card stays the same height
+ * whether the period caught twelve campaigns or four thousand.
  *
- * The result is memoised because the virtual list resets its scroll whenever
- * the array changes: a fresh one every render would pin it to the top.
+ * The sorted list is memoised because it is the input to the slice: rebuilding
+ * it every render would re-slice on every keystroke elsewhere in the card.
  */
 export function useTableView<Row extends { name: string }, Totals>(
   rows: Row[],
@@ -51,6 +69,8 @@ export function useTableView<Row extends { name: string }, Totals>(
 ) {
   const [query, setQuery] = useState("")
   const [sort, setSort] = useState<Sort | null>(null)
+  const [pageSize, setPageSize] = useState<number>(PAGE_SIZES[0])
+  const [page, setPage] = useState(1)
 
   const view = useMemo(() => {
     const needle = query.trim().toLowerCase()
@@ -70,21 +90,180 @@ export function useTableView<Row extends { name: string }, Totals>(
     })
   }, [rows, columns, query, sort])
 
+  const pages = Math.max(1, Math.ceil(view.length / pageSize))
+  // a page the list has shrunk past is not a page - the last one stands in for
+  // it until the reader moves, rather than the table going blank
+  const current = Math.min(page, pages)
+  const start = (current - 1) * pageSize
+  const end = Math.min(start + pageSize, view.length)
+
   return {
+    /** everything the search and the sort left, over every page */
     rows: view,
+    /** the slice actually drawn */
+    pageRows: view.slice(start, end),
     query,
-    onQuery: setQuery,
+    // a narrower search is a different list, and page four of it is not the
+    // page four that was on screen - both of these start again from the first
+    onQuery: (next: string) => {
+      setQuery(next)
+      setPage(1)
+    },
     sort,
     // biggest first, then smallest, then back to the order the report built
-    onSort: (key: string) =>
+    onSort: (key: string) => {
       setSort((prev) =>
         prev?.key !== key
           ? { key, dir: "desc" }
           : prev.dir === "desc"
             ? { key, dir: "asc" }
             : null
-      ),
+      )
+      setPage(1)
+    },
+    /** everything TablePager needs, and nothing the table body does */
+    pager: {
+      page: current,
+      pages,
+      onPage: setPage,
+      pageSize,
+      onPageSize: (next: number) => {
+        setPageSize(next)
+        setPage(1)
+      },
+      /** 1-based, for the count beside the pager; 0 of 0 when nothing matched */
+      from: view.length === 0 ? 0 : start + 1,
+      to: end,
+      total: view.length,
+    },
   }
+}
+
+export type PagerProps = ReturnType<
+  typeof useTableView<{ name: string }, unknown>
+>["pager"]
+
+/**
+ * The page numbers to draw: the ends, the current one and its neighbours, with
+ * a gap standing in for whatever a long list holds between them.
+ */
+function pageWindow(page: number, pages: number): (number | "gap")[] {
+  if (pages <= 7)
+    return Array.from({ length: pages }, (_, i): number | "gap" => i + 1)
+  const near = [page - 1, page, page + 1].filter((n) => n > 1 && n < pages)
+  const out: (number | "gap")[] = [1]
+  if (near[0] > 2) out.push("gap")
+  out.push(...near)
+  if (near[near.length - 1] < pages - 1) out.push("gap")
+  out.push(pages)
+  return out
+}
+
+/**
+ * Which page of the table is on screen, and how big a page is.
+ *
+ * The numbered buttons are desktop only - on a phone the row would wrap into a
+ * second line of its own, and the arrows plus the count say the same thing.
+ */
+export function TablePager({
+  page,
+  pages,
+  onPage,
+  pageSize,
+  onPageSize,
+  from,
+  to,
+  total,
+  anchor,
+}: PagerProps & {
+  /** the table itself, brought back into view when the page turns */
+  anchor?: React.RefObject<HTMLElement | null>
+}) {
+  // a page turned from the foot of a hundred rows would otherwise open at its
+  // own foot; "nearest" walks back up to the head and does nothing at all when
+  // the table already fits on screen
+  function turn(next: number) {
+    onPage(next)
+    anchor?.current?.scrollIntoView({ block: "nearest" })
+  }
+
+  if (total === 0) return null
+
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+      <div className="flex items-center gap-2">
+        <Select
+          value={String(pageSize)}
+          onValueChange={(value) => onPageSize(Number(value))}
+        >
+          <SelectTrigger
+            size="sm"
+            className="w-auto text-xs"
+            aria-label="Рядків на сторінці"
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {PAGE_SIZES.map((size) => (
+              <SelectItem key={size} value={String(size)}>
+                {size}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <span className="text-xs text-muted-foreground tabular-nums">
+          {fmtNum(from)}–{fmtNum(to)} з {fmtNum(total)}
+        </span>
+      </div>
+
+      {pages > 1 && (
+        <div className="flex items-center gap-1">
+          <Button
+            variant="outline"
+            size="icon-sm"
+            disabled={page <= 1}
+            onClick={() => turn(page - 1)}
+            aria-label="Попередня сторінка"
+          >
+            <IconChevronLeft />
+          </Button>
+          {pageWindow(page, pages).map((slot, i) =>
+            slot === "gap" ? (
+              <span
+                key={`gap-${i}`}
+                className="hidden w-5 text-center text-xs text-muted-foreground sm:block"
+              >
+                …
+              </span>
+            ) : (
+              <Button
+                key={slot}
+                variant={slot === page ? "secondary" : "ghost"}
+                size="icon-sm"
+                className="hidden text-xs tabular-nums sm:inline-flex"
+                aria-current={slot === page ? "page" : undefined}
+                onClick={() => turn(slot)}
+              >
+                {slot}
+              </Button>
+            )
+          )}
+          <span className="text-xs text-muted-foreground tabular-nums sm:hidden">
+            {page} / {pages}
+          </span>
+          <Button
+            variant="outline"
+            size="icon-sm"
+            disabled={page >= pages}
+            onClick={() => turn(page + 1)}
+            aria-label="Наступна сторінка"
+          >
+            <IconChevronRight />
+          </Button>
+        </div>
+      )}
+    </div>
+  )
 }
 
 export function TableSearch({
