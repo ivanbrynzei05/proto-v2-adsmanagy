@@ -6,7 +6,7 @@ import {
   IconSpeakerphone,
   IconUsers,
 } from "@tabler/icons-react"
-import { useState } from "react"
+import { useMemo, useState } from "react"
 
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
@@ -134,11 +134,25 @@ export function FilterGroups({
   members,
   className,
 }: FilterGroupsProps & { className?: string }) {
-  // a cabinet that the platforms above it - or the people the report is read
-  // for - rule out is shown, but greyed: the list is how you see which cabinets
-  // a platform even has
-  const reachable = matchingAccounts({ ...filters, accounts: [] }, members).map(
-    (a) => a.id
+  // Every tree is built once and then held: the catalogue alone is a couple of
+  // thousand nodes, and rebuilding it on each tick would both cost that and
+  // reshuffle the pickers' pages under whoever is ticking.
+  const team = useMemo(() => teamTree(members), [members])
+  const products = useMemo(() => productsTree(crmOptions), [crmOptions])
+  const centers = useMemo(
+    () => flatTree(centerOptions, "centers"),
+    [centerOptions]
+  )
+  const crms = useMemo(() => flatTree(crmOptions, "crms"), [crmOptions])
+  // the exception, and it has to be: a cabinet that the platforms above it - or
+  // the people the report is read for - rule out is shown, but greyed, so this
+  // one is rebuilt as the ticks that grey it change
+  const ads = useMemo(
+    () =>
+      adsTree(
+        matchingAccounts({ ...filters, accounts: [] }, members).map((a) => a.id)
+      ),
+    [filters, members]
   )
 
   return (
@@ -159,7 +173,7 @@ export function FilterGroups({
                 the lead and nothing under it. */}
           <TreePicker
             label="Користувачі"
-            nodes={teamTree(members)}
+            nodes={team}
             filters={filters}
             onFilters={onFilters}
           />
@@ -188,7 +202,7 @@ export function FilterGroups({
               the report is actually cut by. */}
         <TreePicker
           label="Джерела"
-          nodes={adsTree(reachable)}
+          nodes={ads}
           filters={filters}
           onFilters={onFilters}
         />
@@ -200,15 +214,14 @@ export function FilterGroups({
         count={filters.products.length}
         onClear={() => onFilters({ ...filters, products: [] })}
       >
-        {/* Two tiers: each CRM brings its own catalogue, and a product only
-              means something under the one it came from. The CRM row here is a
-              header, not a choice - that choice lives in its own group below.
-              The catalogue runs to a couple of thousand, so this one is typed
-              into rather than scrolled through. */}
+        {/* One flat catalogue: the CRM a товар came from is a mark on its row,
+              and picking a CRM is what the group below is for. It runs to a
+              couple of thousand, so it is typed into rather than paged
+              through. */}
         <TreePicker
           label="Товари"
           searchable
-          nodes={productsTree(crmOptions)}
+          nodes={products}
           filters={filters}
           onFilters={onFilters}
         />
@@ -224,7 +237,7 @@ export function FilterGroups({
               category has nothing under its rows. */}
         <TreePicker
           label="Колцентри"
-          nodes={flatTree(centerOptions, "centers")}
+          nodes={centers}
           filters={filters}
           onFilters={onFilters}
         />
@@ -238,7 +251,7 @@ export function FilterGroups({
       >
         <TreePicker
           label="Системи"
-          nodes={flatTree(crmOptions, "crms")}
+          nodes={crms}
           filters={filters}
           onFilters={onFilters}
         />

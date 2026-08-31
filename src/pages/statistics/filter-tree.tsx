@@ -1,5 +1,11 @@
 /* eslint-disable react-refresh/only-export-components */
-import { IconChevronDown, IconSearch, IconTag } from "@tabler/icons-react"
+import {
+  IconChevronDown,
+  IconChevronLeft,
+  IconChevronRight,
+  IconSearch,
+  IconTag,
+} from "@tabler/icons-react"
 import { useMemo, useState } from "react"
 
 import { Badge } from "@/components/ui/badge"
@@ -15,6 +21,7 @@ import { CrmLogo } from "@/features/integrations/logos"
 import { type CrmType } from "@/features/integrations/types"
 import { type TeamMember } from "@/features/team/types"
 import { cn } from "@/lib/utils"
+import { fmtNum } from "@/pages/dashboard/data"
 import { AD_ACCOUNTS, PLATFORMS, PORTFOLIOS } from "@/pages/campaigns/data"
 import { PlatformBadge } from "@/pages/campaigns/platform-badge"
 import { PRODUCT_OPTIONS, type ReportFilters } from "./data"
@@ -57,9 +64,13 @@ export type FilterNode = {
   children?: FilterNode[]
 }
 
-// The catalogue runs to a couple of thousand; a tier shows the first screen of
-// them and the rest is reached by typing.
-const ROWS_PER_NODE = 40
+// The catalogue runs to a couple of thousand, and a picker is not a table: a
+// tier hands out a short page of rows at a time, with a pager under it, rather
+// than a list long enough to lose the thing you opened it for.
+const PAGE_ROWS = 10
+
+/** one array for every leaf, so a childless row keeps its identity */
+const NO_CHILDREN: FilterNode[] = []
 
 function has(filters: ReportFilters, node: FilterNode) {
   return (filters[node.field] as string[]).includes(node.id)
@@ -106,34 +117,127 @@ function prune(nodes: FilterNode[], needle: string): FilterNode[] {
 }
 
 /**
+ * One tier's worth of rows, a page at a time.
+ *
+ * Used both for the top of a picker and for the rows under a node, so a flat
+ * catalogue of a couple of thousand and a cabinet list three tiers down are
+ * read exactly the same way.
+ */
+function usePagedRows(
+  rows: FilterNode[],
+  needle: string,
+  filters: ReportFilters
+) {
+  // Ticked rows are floated to the head of the tier, and the order is then held
+  // still: a товар ticked through the search box is on the first page once the
+  // box is cleared, while ticking one where it stands does not throw it onto
+  // another page from under the pointer.
+  const ordered = useMemo(
+    () =>
+      rows.length <= PAGE_ROWS
+        ? rows
+        : [...rows].sort(
+            (a, b) =>
+              Number(!b.group && has(filters, b)) -
+              Number(!a.group && has(filters, a))
+          ),
+    // the ticks are what the order is taken from, once, and not what it follows
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [rows]
+  )
+
+  const [page, setPage] = useState(0)
+  const [seen, setSeen] = useState(needle)
+  if (seen !== needle) {
+    setSeen(needle)
+    setPage(0)
+  }
+
+  const pages = Math.ceil(ordered.length / PAGE_ROWS)
+  // a query that narrows the tier can leave the page past its end
+  const at = Math.min(page, Math.max(0, pages - 1))
+  const from = at * PAGE_ROWS
+
+  return {
+    rows: ordered.slice(from, from + PAGE_ROWS),
+    total: ordered.length,
+    from,
+    at,
+    pages,
+    setPage,
+  }
+}
+
+/**
+ * The tier's own pager, indented onto the rows it turns. Reads like the one
+ * under the tables, at the size a popover can carry.
+ */
+function Pager({
+  page,
+  depth,
+}: {
+  page: ReturnType<typeof usePagedRows>
+  depth: number
+}) {
+  if (page.pages <= 1) return null
+
+  return (
+    <div
+      className="flex items-center gap-1 py-1"
+      style={{ paddingLeft: 8 + depth * 18 }}
+    >
+      <span className="text-[11px] text-muted-foreground tabular-nums">
+        {fmtNum(page.from + 1)}–{fmtNum(page.from + page.rows.length)} з{" "}
+        {fmtNum(page.total)}
+      </span>
+      <div className="ml-auto flex items-center gap-0.5">
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          className="size-7"
+          disabled={page.at === 0}
+          onClick={() => page.setPage(page.at - 1)}
+          aria-label="Попередня сторінка"
+        >
+          <IconChevronLeft className="size-4" />
+        </Button>
+        <span className="w-10 text-center text-[11px] text-muted-foreground tabular-nums">
+          {page.at + 1} / {page.pages}
+        </span>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          className="size-7"
+          disabled={page.at >= page.pages - 1}
+          onClick={() => page.setPage(page.at + 1)}
+          aria-label="Наступна сторінка"
+        >
+          <IconChevronRight className="size-4" />
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+/**
  * One node and everything under it. The tree is always open: the indent is what
  * says which tier a row belongs to, and nothing is hidden behind a fold.
  */
 function Row({
   node,
   depth,
+  needle,
   filters,
   onFilters,
 }: {
   node: FilterNode
   depth: number
+  /** what is in the search box - a new one opens the tier at its first page */
+  needle: string
   filters: ReportFilters
   onFilters: (next: ReportFilters) => void
 }) {
-  const children = node.children ?? []
-  // The cut at ROWS_PER_NODE is what keeps a couple of thousand товарів out of
-  // the DOM. A row ticked through the search box and then left behind by the
-  // cut could never be taken off again, so ticked rows float to the top of
-  // their tier - the sort is stable, and everything else keeps the order it
-  // came in.
-  const rows =
-    children.length > ROWS_PER_NODE
-      ? [...children].sort(
-          (a, b) =>
-            Number(!b.group && has(filters, b)) -
-            Number(!a.group && has(filters, a))
-        )
-      : children
+  const page = usePagedRows(node.children ?? NO_CHILDREN, needle, filters)
 
   return (
     <>
@@ -184,23 +288,17 @@ function Row({
         )}
       </div>
 
-      {rows.slice(0, ROWS_PER_NODE).map((child) => (
+      {page.rows.map((child) => (
         <Row
           key={child.id}
           node={child}
           depth={depth + 1}
+          needle={needle}
           filters={filters}
           onFilters={onFilters}
         />
       ))}
-      {children.length > ROWS_PER_NODE && (
-        <p
-          className="py-1.5 text-xs text-muted-foreground"
-          style={{ paddingLeft: 8 + (depth + 1) * 18 }}
-        >
-          ще {children.length - ROWS_PER_NODE} — шукай полем вище
-        </p>
-      )}
+      <Pager page={page} depth={depth + 1} />
     </>
   )
 }
@@ -227,6 +325,9 @@ export function TreePicker({
   const [query, setQuery] = useState("")
   const needle = query.trim().toLowerCase()
   const shown = useMemo(() => prune(nodes, needle), [nodes, needle])
+  // the top tier is paged like any other: a category can be a flat catalogue of
+  // a couple of thousand as easily as it can be three platforms
+  const page = usePagedRows(shown, needle, filters)
   const picked = countPicked(nodes, filters)
 
   return (
@@ -269,15 +370,19 @@ export function TreePicker({
               Нічого не знайдено
             </p>
           ) : (
-            shown.map((node) => (
-              <Row
-                key={node.id}
-                node={node}
-                depth={0}
-                filters={filters}
-                onFilters={onFilters}
-              />
-            ))
+            <>
+              {page.rows.map((node) => (
+                <Row
+                  key={node.id}
+                  node={node}
+                  depth={0}
+                  needle={needle}
+                  filters={filters}
+                  onFilters={onFilters}
+                />
+              ))}
+              <Pager page={page} depth={0} />
+            </>
           )}
         </div>
       </PopoverContent>
@@ -316,32 +421,31 @@ export function adsTree(reachable: string[]): FilterNode[] {
 }
 
 /**
- * CRM › Товар. Nothing in the demo says which CRM sells what, so the catalogue
- * is dealt out over the connected ones — the shape is the point, not the split.
+ * The catalogue, one flat list of товари.
  *
- * A row carries the mark of the system it came from and the id it is picked by:
- * the header above it scrolls away, and the catalogue really does hold two
- * товари of the same name under different ids.
+ * Not cut into a tier per CRM: which system a товар came from is a mark on its
+ * row, not a heading to hunt under - and a catalogue split in two is two lists
+ * to page through for one product. Nothing in the demo says which CRM sells
+ * what, so the mark is dealt out over the connected ones.
+ *
+ * Each row carries that mark and the id it is picked by, since the catalogue
+ * really does hold two товари of the same name under different ids.
  */
 export function productsTree(
   crms: { id: string; name: string; type: CrmType }[]
 ): FilterNode[] {
   if (crms.length === 0) return []
-  return crms.map((crm, index) => ({
-    id: crm.id,
-    label: crm.name,
-    field: "crms" as const,
-    // grouping only: the CRM itself is picked in its own category
-    group: true,
-    children: PRODUCT_OPTIONS.filter((_, i) => i % crms.length === index).map(
-      (product) => ({
-        id: product.id,
-        label: product.name,
-        field: "products" as const,
-        icon: <CrmLogo type={crm.type} className="size-4 text-[9px]" />,
-        badge: product.id,
-      })
+  return PRODUCT_OPTIONS.map((product, i) => ({
+    id: product.id,
+    label: product.name,
+    field: "products" as const,
+    icon: (
+      <CrmLogo
+        type={crms[i % crms.length].type}
+        className="size-4 text-[9px]"
+      />
     ),
+    badge: product.id,
   }))
 }
 
