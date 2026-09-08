@@ -164,6 +164,8 @@ function pageWindow(page: number, pages: number): (number | "gap")[] {
  *
  * The numbered buttons are desktop only - on a phone the row would wrap into a
  * second line of its own, and the arrows plus the count say the same thing.
+ * `bare` drops the sizes and the counts and leaves the page buttons alone, for
+ * a short table where the tally says nothing the pages do not.
  */
 export function TablePager({
   page,
@@ -175,9 +177,18 @@ export function TablePager({
   to,
   total,
   anchor,
-}: PagerProps & {
+  sizes = PAGE_SIZES,
+  bare,
+}: Omit<PagerProps, "pageSize" | "onPageSize"> & {
+  /** the page size picker - a bare pager has none, so neither is needed */
+  pageSize?: number
+  onPageSize?: (next: number) => void
   /** the table itself, brought back into view when the page turns */
   anchor?: React.RefObject<HTMLElement | null>
+  /** page sizes to offer - a short ledger reads in smaller pages than a report */
+  sizes?: readonly number[]
+  /** just the pages: no size picker, no row or page tally */
+  bare?: boolean
 }) {
   // a page turned from the foot of a hundred rows would otherwise open at its
   // own foot; "nearest" walks back up to the head and does nothing at all when
@@ -190,31 +201,38 @@ export function TablePager({
   if (total === 0) return null
 
   return (
-    <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
-      <div className="flex items-center gap-2">
-        <Select
-          value={String(pageSize)}
-          onValueChange={(value) => onPageSize(Number(value))}
-        >
-          <SelectTrigger
-            size="sm"
-            className="w-auto text-xs"
-            aria-label="Рядків на сторінці"
+    <div
+      className={cn(
+        "flex flex-wrap items-center gap-x-3 gap-y-2",
+        bare ? "justify-end" : "justify-between"
+      )}
+    >
+      {!bare && (
+        <div className="flex items-center gap-2">
+          <Select
+            value={String(pageSize)}
+            onValueChange={(value) => onPageSize?.(Number(value))}
           >
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {PAGE_SIZES.map((size) => (
-              <SelectItem key={size} value={String(size)}>
-                {size}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <span className="text-xs text-muted-foreground tabular-nums">
-          {fmtNum(from)}–{fmtNum(to)} з {fmtNum(total)}
-        </span>
-      </div>
+            <SelectTrigger
+              size="sm"
+              className="w-auto text-xs"
+              aria-label="Рядків на сторінці"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {sizes.map((size) => (
+                <SelectItem key={size} value={String(size)}>
+                  {size}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <span className="text-xs text-muted-foreground tabular-nums">
+            {fmtNum(from)}–{fmtNum(to)} з {fmtNum(total)}
+          </span>
+        </div>
+      )}
 
       {pages > 1 && (
         <div className="flex items-center gap-1">
@@ -231,7 +249,10 @@ export function TablePager({
             slot === "gap" ? (
               <span
                 key={`gap-${i}`}
-                className="hidden w-5 text-center text-xs text-muted-foreground sm:block"
+                className={cn(
+                  "w-5 text-center text-xs text-muted-foreground",
+                  !bare && "hidden sm:block"
+                )}
               >
                 …
               </span>
@@ -240,7 +261,10 @@ export function TablePager({
                 key={slot}
                 variant={slot === page ? "secondary" : "ghost"}
                 size="icon-sm"
-                className="hidden text-xs tabular-nums sm:inline-flex"
+                className={cn(
+                  "text-xs tabular-nums",
+                  !bare && "hidden sm:inline-flex"
+                )}
                 aria-current={slot === page ? "page" : undefined}
                 onClick={() => turn(slot)}
               >
@@ -248,9 +272,11 @@ export function TablePager({
               </Button>
             )
           )}
-          <span className="text-xs text-muted-foreground tabular-nums sm:hidden">
-            {page} / {pages}
-          </span>
+          {!bare && (
+            <span className="text-xs text-muted-foreground tabular-nums sm:hidden">
+              {page} / {pages}
+            </span>
+          )}
           <Button
             variant="outline"
             size="icon-sm"

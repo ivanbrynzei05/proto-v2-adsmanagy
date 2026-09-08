@@ -9,8 +9,10 @@ import { SCENARIOS, type Scenario, type SubState } from "./subscription-state"
 type SubscriptionContextValue = {
   scenarioId: Scenario["id"]
   state: SubState
-  // Account balance the plan + add-ons are charged against (static in the demo).
+  // Account balance the plan + add-ons are charged against.
   balance: number
+  /** credit a demo top-up, so the header chip and the balance card agree */
+  topUp: (amount: number) => void
   setState: React.Dispatch<React.SetStateAction<SubState>>
   pickScenario: (scenario: Scenario) => void
 }
@@ -36,14 +38,20 @@ export function SubscriptionProvider({
     DEFAULT_SCENARIO.make()
   )
 
+  const [balance, setBalance] = React.useState(85)
+
   const pickScenario = React.useCallback((scenario: Scenario) => {
     setScenarioId(scenario.id)
     setState(scenario.make())
   }, [])
 
+  const topUp = React.useCallback((amount: number) => {
+    setBalance((prev) => prev + amount)
+  }, [])
+
   const value = React.useMemo(
-    () => ({ scenarioId, state, balance: 85, setState, pickScenario }),
-    [scenarioId, state, pickScenario]
+    () => ({ scenarioId, state, balance, topUp, setState, pickScenario }),
+    [scenarioId, state, balance, topUp, pickScenario]
   )
 
   return (

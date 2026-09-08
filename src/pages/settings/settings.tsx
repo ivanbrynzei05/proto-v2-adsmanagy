@@ -21,7 +21,10 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
+import { PaymentHistory } from "@/features/billing/payment-history"
+import { PAYMENTS, type Payment } from "@/features/billing/payments"
 import { useSubscription } from "@/features/billing/subscription-context"
+import { TOP_UP_METHOD, TopUpDialog } from "@/features/billing/top-up-dialog"
 import { CurrencyControls } from "@/features/currency/currency-controls"
 import { ExpensesSection } from "@/features/expenses/expenses-section"
 import { TeamSection } from "@/features/team/team-section"
@@ -278,8 +281,48 @@ function SourcesSection() {
   )
 }
 
-function BalanceCard() {
-  const { balance } = useSubscription()
+function BalanceSection() {
+  const { balance, topUp } = useSubscription()
+  const [topUpOpen, setTopUpOpen] = useState(false)
+  // the ledger is demo data, but a top-up made here has to land on top of it
+  const [payments, setPayments] = useState<Payment[]>(PAYMENTS)
+
+  const handlePaid = (amount: number) => {
+    topUp(amount)
+    setPayments((prev) => [
+      {
+        id: `INV-${2605 + prev.length - PAYMENTS.length}`,
+        date: new Date(),
+        kind: "Поповнення балансу",
+        method: TOP_UP_METHOD,
+        amount,
+        status: "paid",
+      },
+      ...prev,
+    ])
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      <BalanceCard balance={balance} onTopUp={() => setTopUpOpen(true)} />
+      <PaymentHistory payments={payments} />
+      <TopUpDialog
+        open={topUpOpen}
+        onOpenChange={setTopUpOpen}
+        balance={balance}
+        onPaid={handlePaid}
+      />
+    </div>
+  )
+}
+
+function BalanceCard({
+  balance,
+  onTopUp,
+}: {
+  balance: number
+  onTopUp: () => void
+}) {
   return (
     <Card>
       <CardHeader className="border-b">
@@ -299,7 +342,10 @@ function BalanceCard() {
             <p className="text-xs text-muted-foreground">Доступно на балансі</p>
           </div>
         </div>
-        <Button className="bg-neutral-900 text-white hover:bg-neutral-800 dark:bg-white dark:text-neutral-900 dark:hover:bg-neutral-200">
+        <Button
+          onClick={onTopUp}
+          className="bg-neutral-900 text-white hover:bg-neutral-800 dark:bg-white dark:text-neutral-900 dark:hover:bg-neutral-200"
+        >
           Поповнити баланс
         </Button>
       </CardContent>
@@ -353,7 +399,7 @@ export function SettingsPage() {
           {active === "sources" && <SourcesSection />}
           {active === "expenses" && <ExpensesSection />}
           {active === "plans" && <SubscriptionManager />}
-          {active === "billing" && <BalanceCard />}
+          {active === "billing" && <BalanceSection />}
         </div>
       </div>
     </div>
