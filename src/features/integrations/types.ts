@@ -8,11 +8,29 @@ export const AD_PLATFORMS = [
 
 export type AdPlatform = (typeof AD_PLATFORMS)[number]
 
-export type AdAccount = {
+// A cabinet is what the analytics actually reads - it can be switched off
+// without disconnecting the account it arrived on.
+export type AdCabinet = {
+  // the name the platform gives it, kept even once it's been renamed here
   name: string
-  manager: string
-  accountId: string
+  // the name the user gave it, if they gave it one
+  label?: string
+  cabinetId: string
   spend: string
+  // absent on saves made before the switch existed - those read as switched on
+  enabled?: boolean
+}
+
+// One login on the platform, holding however many cabinets it has access to.
+// It isn't always the current user: an account can be connected by a colleague
+// through a shared link, which is why the owner's name travels with it.
+export type AdAccount = {
+  owner: string
+  label?: string
+  cabinets: AdCabinet[]
+  // switching the account off leaves its cabinets in place, just out of the
+  // analytics - absent on saves made before the switch existed
+  enabled?: boolean
 }
 
 export type ConnectedAdAccounts = Partial<
@@ -22,52 +40,105 @@ export type ConnectedAdAccounts = Partial<
 export const MOCK_AD_ACCOUNTS: Record<AdPlatform["name"], AdAccount[]> = {
   "Facebook Ads": [
     {
-      name: "Brand Awareness",
-      manager: "Business Manager",
-      accountId: "act_9910048227761803",
-      spend: "₴ 31 000 / міс",
+      owner: "Ігор Мельник",
+      cabinets: [
+        {
+          name: "Brand Awareness",
+          cabinetId: "act_9910048227761803",
+          spend: "₴ 31 000 / міс",
+        },
+        {
+          name: "Retargeting",
+          cabinetId: "act_9910048227761921",
+          spend: "₴ 12 400 / міс",
+        },
+        {
+          name: "Lookalike Audience",
+          cabinetId: "act_9910048227762045",
+          spend: "₴ 8 900 / міс",
+        },
+      ],
     },
     {
-      name: "Retargeting",
-      manager: "Business Manager",
-      accountId: "act_9910048227761921",
-      spend: "₴ 12 400 / міс",
-    },
-    {
-      name: "Lookalike Audience",
-      manager: "Business Manager",
-      accountId: "act_9910048227762045",
-      spend: "₴ 8 900 / міс",
+      owner: "Олена Ткаченко",
+      cabinets: [
+        {
+          name: "Winter Sale",
+          cabinetId: "act_9910048227763318",
+          spend: "₴ 16 700 / міс",
+        },
+        {
+          name: "Catalog Ads",
+          cabinetId: "act_9910048227763504",
+          spend: "₴ 7 300 / міс",
+        },
+      ],
     },
   ],
   "TikTok Ads": [
     {
-      name: "Performance Max",
-      manager: "TikTok Business Center",
-      accountId: "act_5523109872341205",
-      spend: "₴ 18 500 / міс",
+      owner: "Олена Ткаченко",
+      cabinets: [
+        {
+          name: "Performance Max",
+          cabinetId: "act_5523109872341205",
+          spend: "₴ 18 500 / міс",
+        },
+        {
+          name: "Spark Ads",
+          cabinetId: "act_5523109872341378",
+          spend: "₴ 9 200 / міс",
+        },
+      ],
     },
     {
-      name: "Spark Ads",
-      manager: "TikTok Business Center",
-      accountId: "act_5523109872341378",
-      spend: "₴ 9 200 / міс",
+      owner: "Дмитро Савчук",
+      cabinets: [
+        {
+          name: "Creative Test",
+          cabinetId: "act_5523109872341590",
+          spend: "₴ 4 800 / міс",
+        },
+      ],
     },
   ],
   "Google Ads": [
     {
-      name: "Search Campaign",
-      manager: "Google Ads Manager",
-      accountId: "act_7741098234561987",
-      spend: "₴ 24 200 / міс",
+      owner: "Ігор Мельник",
+      cabinets: [
+        {
+          name: "Search Campaign",
+          cabinetId: "act_7741098234561987",
+          spend: "₴ 24 200 / міс",
+        },
+        {
+          name: "Performance Max",
+          cabinetId: "act_7741098234562104",
+          spend: "₴ 11 700 / міс",
+        },
+      ],
     },
     {
-      name: "Performance Max",
-      manager: "Google Ads Manager",
-      accountId: "act_7741098234562104",
-      spend: "₴ 11 700 / міс",
+      owner: "Дмитро Савчук",
+      cabinets: [
+        {
+          name: "Shopping",
+          cabinetId: "act_7741098234562377",
+          spend: "₴ 15 900 / міс",
+        },
+      ],
     },
   ],
+}
+
+// The tab badge and the picker both count cabinets rather than accounts - the
+// cabinets are what the analytics reads.
+export function countCabinets(connected: ConnectedAdAccounts) {
+  return Object.values(connected).reduce(
+    (sum, accounts) =>
+      sum + (accounts ?? []).reduce((n, a) => n + a.cabinets.length, 0),
+    0
+  )
 }
 
 export function pluralizeKabinet(count: number) {

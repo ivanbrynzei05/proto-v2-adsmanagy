@@ -1,10 +1,13 @@
 /* eslint-disable react-refresh/only-export-components */
 import * as React from "react"
 
-import type {
-  CallCenter,
-  ConnectedAdAccounts,
-  ConnectedCrm,
+import {
+  MOCK_AD_ACCOUNTS,
+  type AdAccount,
+  type AdPlatform,
+  type CallCenter,
+  type ConnectedAdAccounts,
+  type ConnectedCrm,
 } from "@/features/integrations/types"
 
 type IntegrationsContextValue = {
@@ -43,6 +46,51 @@ type StoredCallCenter = Omit<CallCenter, "offices"> & {
   office?: string
 }
 
+// Cabinets used to be stored flat, one entry per cabinet, before they were
+// grouped under the account they were connected through. Such a save is
+// regrouped through the catalogue - every connection comes out of it - so an
+// older demo keeps its cabinets and their switches.
+type StoredCabinet = { accountId: string; enabled?: boolean }
+
+function restoreAccounts(
+  stored: Partial<Record<AdPlatform["name"], (AdAccount | StoredCabinet)[]>>
+): ConnectedAdAccounts {
+  const entries = Object.entries(stored) as [
+    AdPlatform["name"],
+    (AdAccount | StoredCabinet)[] | undefined,
+  ][]
+  const restored: ConnectedAdAccounts = {}
+
+  for (const [platform, saved] of entries) {
+    const accounts: AdAccount[] = []
+
+    for (const entry of saved ?? []) {
+      if ("cabinets" in entry) {
+        accounts.push(entry)
+        continue
+      }
+      const known = MOCK_AD_ACCOUNTS[platform]?.find((a) =>
+        a.cabinets.some((c) => c.cabinetId === entry.accountId)
+      )
+      const cabinet = known?.cabinets.find(
+        (c) => c.cabinetId === entry.accountId
+      )
+      if (!known || !cabinet) continue
+
+      let account = accounts.find((a) => a.owner === known.owner)
+      if (!account) {
+        account = { ...known, cabinets: [] }
+        accounts.push(account)
+      }
+      account.cabinets.push({ ...cabinet, enabled: entry.enabled })
+    }
+
+    if (accounts.length > 0) restored[platform] = accounts
+  }
+
+  return restored
+}
+
 function readStoredState(): StoredState {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
@@ -58,6 +106,7 @@ function readStoredState(): StoredState {
     return {
       ...DEFAULT_STATE,
       ...parsed,
+      connectedAccounts: restoreAccounts(parsed.connectedAccounts ?? {}),
       callCenters: storedCallCenters.map(({ office, ...cc }) => ({
         ...cc,
         offices: cc.offices ?? (office ? [office] : []),

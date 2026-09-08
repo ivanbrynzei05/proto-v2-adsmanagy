@@ -7,8 +7,10 @@ import {
   IconClockX,
   IconLinkOff,
   IconLoader2,
+  IconLock,
   IconMoon,
   IconRefresh,
+  IconSettings,
   IconShieldLock,
   IconSun,
   IconUsersGroup,
@@ -17,6 +19,7 @@ import { useEffect, useRef, useState, type ComponentType } from "react"
 import { useNavigate, useParams, useSearchParams } from "react-router-dom"
 
 import { useTheme } from "@/components/theme-provider"
+import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
@@ -86,6 +89,40 @@ function fetchPublicInvite(token: string): Promise<AdInvitePublic> {
       })
     }, 650)
   })
+}
+
+// GET /integrations/ads/invites/public/{token}/accounts - read once the person
+// is back from the platform: the login the OAuth handed over and the cabinets
+// under it. One authorisation is one account, so that's what comes back. A
+// cabinet somebody else has already connected comes back claimed - it's listed
+// so the person sees it, but it can't be taken twice.
+type PublicCabinet = { id: string; name: string; taken?: boolean }
+type PublicAccount = { owner: string; cabinets: PublicCabinet[] }
+
+const MOCK_CONNECTED_ACCOUNT: Record<InviteProvider, PublicAccount> = {
+  facebook: {
+    owner: "Ігор Мельник",
+    cabinets: [
+      { id: "act_9910048227761803", name: "Brand Awareness" },
+      { id: "act_9910048227761921", name: "Retargeting" },
+      { id: "act_9910048227762045", name: "Lookalike Audience", taken: true },
+    ],
+  },
+  tiktok: {
+    owner: "Олена Ткаченко",
+    cabinets: [
+      { id: "act_5523109872341205", name: "Performance Max" },
+      { id: "act_5523109872341378", name: "Spark Ads", taken: true },
+    ],
+  },
+  google_ads: {
+    owner: "Ігор Мельник",
+    cabinets: [
+      { id: "act_7741098234561987", name: "Search Campaign" },
+      { id: "act_7741098234562104", name: "Performance Max" },
+      { id: "act_7741098234562377", name: "Shopping", taken: true },
+    ],
+  },
 }
 
 // POST /integrations/ads/invites/public/{token}/oauth/start
@@ -449,7 +486,10 @@ function NotFoundState() {
 }
 
 function SuccessState({ provider }: { provider: InviteProvider | null }) {
-  const label = provider ? PROVIDER_META[provider].label : "Рекламний кабінет"
+  const meta = provider ? PROVIDER_META[provider] : null
+  const label = meta?.label ?? "Рекламний кабінет"
+  const account = provider ? MOCK_CONNECTED_ACCOUNT[provider] : null
+
   return (
     <StateCard
       iconRender={<IconCircleCheck className="size-8" />}
@@ -462,7 +502,48 @@ function SuccessState({ provider }: { provider: InviteProvider | null }) {
         </>
       }
     >
-      <div className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
+      {/* read-only on purpose - which cabinets stay on is decided in the
+          app's settings, not here by whoever followed the link */}
+      {account && (
+        <div className="rounded-xl border p-3 text-left">
+          <div className="flex items-center gap-2.5 border-b pb-2.5">
+            {meta && <meta.logo className="size-6 shrink-0" />}
+            <p className="truncate text-sm font-semibold">{account.owner}</p>
+          </div>
+          <div className="mt-2.5 flex flex-col gap-2">
+            {account.cabinets.map((cabinet) => (
+              <div
+                key={cabinet.id}
+                className={cn(
+                  "flex items-center justify-between gap-3 rounded-lg bg-muted p-2.5",
+                  cabinet.taken && "opacity-55"
+                )}
+              >
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium">{cabinet.name}</p>
+                  {cabinet.taken && (
+                    <p className="truncate text-xs text-muted-foreground">
+                      Вже підключений іншим користувачем
+                    </p>
+                  )}
+                </div>
+                {cabinet.taken ? (
+                  <IconLock className="size-4 shrink-0 text-muted-foreground" />
+                ) : (
+                  <IconCircleCheck className="size-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      <Alert variant="info" className="mt-3 text-left">
+        <IconSettings />
+        <AlertDescription>
+          Увімкнути чи вимкнути кабінети можна в налаштуваннях AdsMetry
+        </AlertDescription>
+      </Alert>
+      <div className="mt-4 flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
         <IconUsersGroup className="size-3.5" />
         Доступ отримала команда, яка вас запросила
       </div>

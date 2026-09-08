@@ -27,6 +27,7 @@ import { ExpensesSection } from "@/features/expenses/expenses-section"
 import { TeamSection } from "@/features/team/team-section"
 import { AdAccountsStep } from "@/features/integrations/ad-accounts-step"
 import { CrmStep } from "@/features/integrations/crm-step"
+import { countCabinets } from "@/features/integrations/types"
 import { SubscriptionManager } from "@/pages/subscription/subscription"
 import { cn } from "@/lib/utils"
 
@@ -209,10 +210,7 @@ function SourcesSection() {
       id: "ads",
       icon: IconAd,
       title: "Рекламні кабінети",
-      count: Object.values(connectedAccounts).reduce(
-        (sum, accounts) => sum + (accounts?.length ?? 0),
-        0
-      ),
+      count: countCabinets(connectedAccounts),
     },
     {
       id: "crm",
