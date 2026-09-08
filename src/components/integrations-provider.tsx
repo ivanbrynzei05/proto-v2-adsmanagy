@@ -52,6 +52,36 @@ type StoredCallCenter = Omit<CallCenter, "offices"> & {
 // older demo keeps its cabinets and their switches.
 type StoredCabinet = { accountId: string; enabled?: boolean }
 
+// A save only holds what the catalogue said the day it was made: an account
+// connected before "who added it", the locked-cabinet state, or a cabinet the
+// login has since been given comes back without them. All of that belongs to
+// the platform rather than to the user, so the account is rebuilt from the
+// catalogue on every load and only what the user did here - the names they
+// gave, the switches they set - is carried over onto it.
+function refreshFromCatalogue(
+  platform: AdPlatform["name"],
+  account: AdAccount
+): AdAccount {
+  const known = MOCK_AD_ACCOUNTS[platform]?.find(
+    (a) => a.owner === account.owner
+  )
+  if (!known) return account
+
+  const saved = new Map(account.cabinets.map((c) => [c.cabinetId, c]))
+
+  return {
+    ...known,
+    ...account,
+    connectedBy: account.connectedBy ?? known.connectedBy,
+    cabinets: known.cabinets.map((source) => {
+      const mine = saved.get(source.cabinetId)
+      return mine
+        ? { ...source, label: mine.label, enabled: mine.enabled }
+        : source
+    }),
+  }
+}
+
 function restoreAccounts(
   stored: Partial<Record<AdPlatform["name"], (AdAccount | StoredCabinet)[]>>
 ): ConnectedAdAccounts {
@@ -66,7 +96,7 @@ function restoreAccounts(
 
     for (const entry of saved ?? []) {
       if ("cabinets" in entry) {
-        accounts.push(entry)
+        accounts.push(refreshFromCatalogue(platform, entry))
         continue
       }
       const known = MOCK_AD_ACCOUNTS[platform]?.find((a) =>

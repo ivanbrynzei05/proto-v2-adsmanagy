@@ -19,6 +19,10 @@ export type AdCabinet = {
   spend: string
   // absent on saves made before the switch existed - those read as switched on
   enabled?: boolean
+  // why the platform won't let us read this cabinet at all - a revoked access,
+  // a ban, an unpaid bill. Set means the switch is dead: it can't be turned on
+  // from here, and the text is what the row says instead
+  lockReason?: string
 }
 
 // One login on the platform, holding however many cabinets it has access to.
@@ -27,6 +31,9 @@ export type AdCabinet = {
 export type AdAccount = {
   owner: string
   label?: string
+  // who in the team brought this account in through the shared link; absent on
+  // an account connected at this desk, which shows no name at all
+  connectedBy?: string
   cabinets: AdCabinet[]
   // switching the account off leaves its cabinets in place, just out of the
   // analytics - absent on saves made before the switch existed
@@ -41,6 +48,7 @@ export const MOCK_AD_ACCOUNTS: Record<AdPlatform["name"], AdAccount[]> = {
   "Facebook Ads": [
     {
       owner: "Ігор Мельник",
+      connectedBy: "Олег Кравець",
       cabinets: [
         {
           name: "Brand Awareness",
@@ -56,11 +64,13 @@ export const MOCK_AD_ACCOUNTS: Record<AdPlatform["name"], AdAccount[]> = {
           name: "Lookalike Audience",
           cabinetId: "act_9910048227762045",
           spend: "₴ 8 900 / міс",
+          lockReason: "Немає доступу",
         },
       ],
     },
     {
       owner: "Олена Ткаченко",
+      connectedBy: "Ірина Соболь",
       cabinets: [
         {
           name: "Winter Sale",
@@ -71,6 +81,45 @@ export const MOCK_AD_ACCOUNTS: Record<AdPlatform["name"], AdAccount[]> = {
           name: "Catalog Ads",
           cabinetId: "act_9910048227763504",
           spend: "₴ 7 300 / міс",
+          // one cabinet out of the analytics while its account stays in
+          enabled: false,
+        },
+      ],
+    },
+    {
+      owner: "Марія Гнатюк",
+      connectedBy: "Дмитро Левченко",
+      cabinets: [
+        {
+          name: "Summer Promo",
+          cabinetId: "act_9910048227764177",
+          spend: "₴ 22 100 / міс",
+        },
+        {
+          name: "Video Views",
+          cabinetId: "act_9910048227764290",
+          spend: "₴ 5 600 / міс",
+          lockReason: "Немає доступу",
+        },
+      ],
+    },
+    {
+      owner: "Vlad Media Buying",
+      connectedBy: "Ірина Соболь",
+      // an agency account kept on the list but out of the reports - the whole
+      // account is switched off, so its cabinets read as greyed with it
+      enabled: false,
+      cabinets: [
+        {
+          name: "Agency Main",
+          cabinetId: "act_9910048227765012",
+          spend: "₴ 48 300 / міс",
+        },
+        {
+          name: "Agency Test",
+          cabinetId: "act_9910048227765188",
+          spend: "₴ 3 100 / міс",
+          lockReason: "Заблоковано платформою",
         },
       ],
     },
@@ -78,6 +127,7 @@ export const MOCK_AD_ACCOUNTS: Record<AdPlatform["name"], AdAccount[]> = {
   "TikTok Ads": [
     {
       owner: "Олена Ткаченко",
+      connectedBy: "Ірина Соболь",
       cabinets: [
         {
           name: "Performance Max",
@@ -88,11 +138,13 @@ export const MOCK_AD_ACCOUNTS: Record<AdPlatform["name"], AdAccount[]> = {
           name: "Spark Ads",
           cabinetId: "act_5523109872341378",
           spend: "₴ 9 200 / міс",
+          lockReason: "Немає доступу",
         },
       ],
     },
     {
       owner: "Дмитро Савчук",
+      connectedBy: "Дмитро Левченко",
       cabinets: [
         {
           name: "Creative Test",
@@ -101,10 +153,28 @@ export const MOCK_AD_ACCOUNTS: Record<AdPlatform["name"], AdAccount[]> = {
         },
       ],
     },
+    {
+      owner: "Артем Кузьменко",
+      connectedBy: "Олег Кравець",
+      cabinets: [
+        {
+          name: "UGC Ads",
+          cabinetId: "act_5523109872341744",
+          spend: "₴ 13 400 / міс",
+        },
+        {
+          name: "Old Creatives",
+          cabinetId: "act_5523109872341902",
+          spend: "₴ 1 900 / міс",
+          enabled: false,
+        },
+      ],
+    },
   ],
   "Google Ads": [
     {
       owner: "Ігор Мельник",
+      connectedBy: "Олег Кравець",
       cabinets: [
         {
           name: "Search Campaign",
@@ -115,16 +185,53 @@ export const MOCK_AD_ACCOUNTS: Record<AdPlatform["name"], AdAccount[]> = {
           name: "Performance Max",
           cabinetId: "act_7741098234562104",
           spend: "₴ 11 700 / міс",
+          lockReason: "Не оплачено",
         },
       ],
     },
     {
       owner: "Дмитро Савчук",
+      connectedBy: "Ірина Соболь",
       cabinets: [
         {
           name: "Shopping",
           cabinetId: "act_7741098234562377",
           spend: "₴ 15 900 / міс",
+        },
+      ],
+    },
+    {
+      owner: "Софія Романюк",
+      connectedBy: "Дмитро Левченко",
+      enabled: false,
+      cabinets: [
+        {
+          name: "Brand Search",
+          cabinetId: "act_7741098234562541",
+          spend: "₴ 6 400 / міс",
+        },
+        {
+          name: "Display Remarketing",
+          cabinetId: "act_7741098234562698",
+          spend: "₴ 2 700 / міс",
+          enabled: false,
+        },
+      ],
+    },
+    {
+      owner: "Назар Бондар",
+      connectedBy: "Ірина Соболь",
+      cabinets: [
+        {
+          name: "PMax Winter",
+          cabinetId: "act_7741098234562855",
+          spend: "₴ 19 800 / міс",
+        },
+        {
+          name: "Search Generic",
+          cabinetId: "act_7741098234562960",
+          spend: "₴ 8 100 / міс",
+          enabled: false,
         },
       ],
     },

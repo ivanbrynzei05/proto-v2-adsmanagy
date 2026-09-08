@@ -1,12 +1,11 @@
 import {
-  IconArrowLeft,
   IconCheck,
-  IconChevronRight,
   IconCopy,
+  IconLock,
   IconPencil,
-  IconPlus,
   IconShieldLock,
   IconTrash,
+  IconUser,
 } from "@tabler/icons-react"
 import { useState, type Dispatch, type SetStateAction } from "react"
 
@@ -22,6 +21,11 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
 import {
   AD_PLATFORMS,
@@ -32,21 +36,19 @@ import {
   type ConnectedAdAccounts,
 } from "./types"
 
-// The whole connect flow lives in this dialog - first the platform, then the
-// authorisation for it - so the page behind it stays a plain list of switches.
+// The authorisation lives in this dialog, so the page behind it stays a plain
+// list of switches. Which platform is being connected is settled before it
+// opens - each platform card carries its own button - so the dialog itself
+// never asks.
 function ConnectDialog({
   open,
   onOpenChange,
   platform,
-  onPickPlatform,
-  connectedAccounts,
   onConnect,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   platform: AdPlatform | null
-  onPickPlatform: (platform: AdPlatform | null) => void
-  connectedAccounts: ConnectedAdAccounts
   onConnect: (platform: AdPlatform) => void
 }) {
   const [copied, setCopied] = useState(false)
@@ -73,24 +75,13 @@ function ConnectDialog({
         className="z-[60] max-w-md data-ending-style:-translate-y-1/2 data-starting-style:-translate-y-1/2"
         overlayClassName="z-[60] backdrop-blur-md"
       >
-        {platform ? (
+        {platform && (
           <>
             <DialogHeader>
-              <div className="flex items-center gap-1.5">
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  className="-ml-1.5 shrink-0 text-muted-foreground"
-                  aria-label="Назад"
-                  onClick={() => onPickPlatform(null)}
-                >
-                  <IconArrowLeft className="size-4" />
-                </Button>
-                <DialogTitle className="flex items-center gap-2">
-                  <platform.icon className="size-5" />
-                  Підключення {platform.name}
-                </DialogTitle>
-              </div>
+              <DialogTitle className="flex items-center gap-2">
+                <platform.icon className="size-5" />
+                Підключення {platform.name}
+              </DialogTitle>
               <DialogDescription>
                 Авторизуйтесь натиснувши кнопку або перейдіть по посиланню
               </DialogDescription>
@@ -125,42 +116,28 @@ function ConnectDialog({
               </div>
             </div>
           </>
-        ) : (
-          <>
-            <DialogHeader>
-              <DialogTitle>Підключити рекламний акаунт</DialogTitle>
-            </DialogHeader>
-            <div className="flex flex-col gap-2">
-              {AD_PLATFORMS.map((p) => {
-                const count = countCabinets({
-                  [p.name]: connectedAccounts[p.name],
-                })
-                return (
-                  <button
-                    key={p.name}
-                    type="button"
-                    className="flex items-center gap-3 rounded-lg border p-3.5 text-left transition-colors hover:bg-muted"
-                    onClick={() => onPickPlatform(p)}
-                  >
-                    <p.icon className="size-7 shrink-0" />
-                    <span className="text-sm font-semibold">{p.name}</span>
-                    {count > 0 && (
-                      <Badge
-                        variant="outline"
-                        className="border-transparent bg-emerald-500/12 text-emerald-600 dark:text-emerald-400"
-                      >
-                        {count} {pluralizeKabinet(count)}
-                      </Badge>
-                    )}
-                    <IconChevronRight className="ml-auto size-4 shrink-0 text-muted-foreground" />
-                  </button>
-                )
-              })}
-            </div>
-          </>
         )}
       </DialogContent>
     </Dialog>
+  )
+}
+
+/**
+ * Who brought the account in.
+ *
+ * An account can arrive through a link a colleague followed, so on a team the
+ * list holds logins nobody at this desk has ever seen. The name rides under the
+ * account behind a person glyph - enough to know who to ask about it, quiet
+ * enough not to compete with the account's own name. An account connected at
+ * this desk carries no name and shows nothing.
+ */
+function ConnectedBy({ name }: { name?: string }) {
+  if (!name) return null
+  return (
+    <span className="flex min-w-0 items-center gap-1">
+      <IconUser className="size-3.5 shrink-0" />
+      <span className="truncate">{name}</span>
+    </span>
   )
 }
 
@@ -228,15 +205,14 @@ export function AdAccountsStep({
     setRenameOpen(false)
   }
 
-  // one flat list of accounts - an account's platform is its logo, so they
-  // don't need to be grouped under a card per platform
-  const rows = AD_PLATFORMS.flatMap((platform) =>
-    (connectedAccounts[platform.name] ?? []).map((account, index) => ({
-      platform,
-      account,
-      index,
-    }))
-  )
+  // three levels, in the order the connection actually nests: the platform is
+  // connected once, logins arrive under it, and the cabinets the analytics
+  // reads hang off a login. Every platform gets a card whether or not anything
+  // is under it yet - the card is where its "connect" button lives.
+  const groups = AD_PLATFORMS.map((platform) => ({
+    platform,
+    accounts: connectedAccounts[platform.name] ?? [],
+  }))
 
   const setAccountEnabled = (
     platform: AdPlatform,
@@ -283,172 +259,231 @@ export function AdAccountsStep({
 
   return (
     <div className="flex flex-col gap-3">
-      <div {...rowProps(0, "flex justify-end")}>
-        <Button
-          variant="secondary"
-          className="gap-1.5"
-          onClick={() => {
-            setConnectPlatform(null)
-            setConnectOpen(true)
-          }}
-        >
-          <IconPlus className="size-4" />
-          Підключити акаунт
-        </Button>
-      </div>
-      {rows.length === 0 ? (
-        <div
-          {...rowProps(
-            1,
-            "rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground"
-          )}
-        >
-          Акаунти не підключені
-        </div>
-      ) : (
-        rows.map(({ platform, account, index }, i) => {
-          const accountEnabled = account.enabled !== false
-          return (
-            <div
-              key={`${platform.name}-${index}`}
-              {...rowProps(i + 1, "rounded-lg border p-3.5")}
-            >
-              <div className="flex items-center justify-between gap-3 border-b pb-3">
-                <div className="flex min-w-0 items-center gap-3">
-                  <platform.icon className="size-7 shrink-0" />
-                  <div className="min-w-0">
-                    <div className="flex min-w-0 items-center gap-1">
-                      <p className="truncate text-sm font-semibold">
-                        {account.label ?? account.owner}
-                      </p>
-                      <Button
-                        variant="ghost"
-                        size="icon-xs"
-                        className="shrink-0 text-muted-foreground"
-                        aria-label="Перейменувати акаунт"
-                        onClick={() =>
-                          openRename(
-                            platform,
-                            index,
-                            null,
-                            account.owner,
-                            account.label ?? account.owner
-                          )
-                        }
-                      >
-                        <IconPencil />
-                      </Button>
-                    </div>
-                    {account.label && (
-                      <p className="truncate text-xs text-muted-foreground">
-                        {account.owner}
-                      </p>
-                    )}
-                  </div>
-                </div>
-                <div className="flex shrink-0 items-center gap-2">
-                  <Badge
-                    variant="outline"
-                    className="border-transparent bg-emerald-500/12 text-emerald-600 dark:text-emerald-400"
-                  >
-                    {account.cabinets.length}{" "}
-                    {pluralizeKabinet(account.cabinets.length)}
-                  </Badge>
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    className="text-muted-foreground"
-                    aria-label="Відключити акаунт"
-                    onClick={() => setAccountToDelete({ platform, index })}
-                  >
-                    <IconTrash className="size-4" />
-                  </Button>
-                  <Switch
-                    checked={accountEnabled}
-                    onCheckedChange={(next) =>
-                      setAccountEnabled(platform, index, next)
-                    }
-                    aria-label={`Акаунт ${account.label ?? account.owner}`}
-                  />
-                </div>
-              </div>
-              {/* an account that's off takes its cabinets out of the analytics
-                  with it, so they all read as greyed */}
-              <div
-                className={cn(
-                  "mt-3 flex flex-col gap-2 transition-opacity",
-                  !accountEnabled && "opacity-45"
-                )}
+      {groups.map(({ platform, accounts }, groupIndex) => {
+        const cabinets = countCabinets({ [platform.name]: accounts })
+        return (
+          <div
+            key={platform.name}
+            {...rowProps(groupIndex, "rounded-xl border")}
+          >
+            {/* the platform is the card, not a logo repeated on every row, and
+                its own connect button sits opposite it */}
+            <div className="flex items-center gap-2.5 border-b px-3.5 py-3">
+              <platform.icon className="size-7 shrink-0" />
+              <p className="text-sm font-bold tracking-tight">
+                {platform.name}
+              </p>
+              {cabinets > 0 && (
+                <Badge
+                  variant="outline"
+                  className="border-transparent bg-emerald-500/12 text-emerald-600 dark:text-emerald-400"
+                >
+                  {cabinets} {pluralizeKabinet(cabinets)}
+                </Badge>
+              )}
+              <Button
+                variant="secondary"
+                size="sm"
+                className="ml-auto gap-1.5"
+                onClick={() => {
+                  setConnectPlatform(platform)
+                  setConnectOpen(true)
+                }}
               >
-                {account.cabinets.map((cabinet, cabinetIndex) => {
-                  const enabled = cabinet.enabled !== false
-                  return (
-                    <div
-                      key={cabinet.cabinetId}
-                      className="flex items-center justify-between gap-3 rounded-lg bg-muted p-3"
-                    >
-                      <div
-                        className={cn(
-                          "min-w-0 transition-opacity",
-                          !enabled && "opacity-50"
-                        )}
-                      >
-                        <div className="flex min-w-0 items-center gap-1">
-                          <p className="truncate text-sm font-semibold">
-                            {cabinet.label ?? cabinet.name}
-                          </p>
-                          <Button
-                            variant="ghost"
-                            size="icon-xs"
-                            className="shrink-0 text-muted-foreground"
-                            aria-label="Перейменувати кабінет"
-                            onClick={() =>
-                              openRename(
-                                platform,
-                                index,
-                                cabinetIndex,
-                                cabinet.name,
-                                cabinet.label ?? cabinet.name
-                              )
-                            }
-                          >
-                            <IconPencil />
-                          </Button>
+                <platform.icon className="size-4" />
+                Підключити
+              </Button>
+            </div>
+
+            <div className="flex flex-col gap-3 p-3.5">
+              {accounts.length === 0 && (
+                <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+                  Акаунти не підключені
+                </div>
+              )}
+              {accounts.map((account, index) => {
+                const accountEnabled = account.enabled !== false
+                return (
+                  <div
+                    key={`${platform.name}-${index}`}
+                    className="rounded-lg border p-3.5"
+                  >
+                    <div className="flex items-center justify-between gap-3 border-b pb-3">
+                      <div className="flex min-w-0 items-center gap-3">
+                        <div className="min-w-0">
+                          <div className="flex min-w-0 items-center gap-1">
+                            <p className="truncate text-sm font-semibold">
+                              {account.label ?? account.owner}
+                            </p>
+                            <Button
+                              variant="ghost"
+                              size="icon-xs"
+                              className="shrink-0 text-muted-foreground"
+                              aria-label="Перейменувати акаунт"
+                              onClick={() =>
+                                openRename(
+                                  platform,
+                                  index,
+                                  null,
+                                  account.owner,
+                                  account.label ?? account.owner
+                                )
+                              }
+                            >
+                              <IconPencil />
+                            </Button>
+                          </div>
+                          {(account.label || account.connectedBy) && (
+                            <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+                              {account.label && (
+                                <span className="truncate">
+                                  {account.owner}
+                                </span>
+                              )}
+                              {account.label && account.connectedBy && (
+                                <span className="text-muted-foreground/50">
+                                  ·
+                                </span>
+                              )}
+                              <ConnectedBy name={account.connectedBy} />
+                            </div>
+                          )}
                         </div>
-                        {cabinet.label && (
-                          <p className="truncate text-xs text-muted-foreground">
-                            {cabinet.name}
-                          </p>
-                        )}
                       </div>
                       <div className="flex shrink-0 items-center gap-2">
-                        <Switch
-                          checked={enabled}
-                          onCheckedChange={(next) =>
-                            setCabinetEnabled(
-                              platform,
-                              index,
-                              cabinetIndex,
-                              next
-                            )
+                        <Badge
+                          variant="outline"
+                          className="border-transparent bg-emerald-500/12 text-emerald-600 dark:text-emerald-400"
+                        >
+                          {account.cabinets.length}{" "}
+                          {pluralizeKabinet(account.cabinets.length)}
+                        </Badge>
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          className="text-muted-foreground"
+                          aria-label="Відключити акаунт"
+                          onClick={() =>
+                            setAccountToDelete({ platform, index })
                           }
-                          aria-label={`Кабінет ${cabinet.label ?? cabinet.name}`}
+                        >
+                          <IconTrash className="size-4" />
+                        </Button>
+                        <Switch
+                          checked={accountEnabled}
+                          onCheckedChange={(next) =>
+                            setAccountEnabled(platform, index, next)
+                          }
+                          aria-label={`Акаунт ${account.label ?? account.owner}`}
                         />
                       </div>
                     </div>
-                  )
-                })}
-              </div>
+                    {/* an account that's off takes its cabinets out of the
+                        analytics with it, so they all read as greyed */}
+                    <div
+                      className={cn(
+                        "mt-3 flex flex-col gap-2 transition-opacity",
+                        !accountEnabled && "opacity-45"
+                      )}
+                    >
+                      {account.cabinets.map((cabinet, cabinetIndex) => {
+                        // a locked cabinet is not "off" - the platform won't
+                        // give us its numbers at all, so the switch is dead
+                        // rather than waiting to be flipped back
+                        const locked = Boolean(cabinet.lockReason)
+                        const enabled = !locked && cabinet.enabled !== false
+                        return (
+                          <div
+                            key={cabinet.cabinetId}
+                            className="flex items-center justify-between gap-3 rounded-lg bg-muted p-3"
+                          >
+                            <div
+                              className={cn(
+                                "min-w-0 transition-opacity",
+                                !enabled && "opacity-50"
+                              )}
+                            >
+                              <div className="flex min-w-0 items-center gap-1">
+                                <p className="truncate text-sm font-semibold">
+                                  {cabinet.label ?? cabinet.name}
+                                </p>
+                                {!locked && (
+                                  <Button
+                                    variant="ghost"
+                                    size="icon-xs"
+                                    className="shrink-0 text-muted-foreground"
+                                    aria-label="Перейменувати кабінет"
+                                    onClick={() =>
+                                      openRename(
+                                        platform,
+                                        index,
+                                        cabinetIndex,
+                                        cabinet.name,
+                                        cabinet.label ?? cabinet.name
+                                      )
+                                    }
+                                  >
+                                    <IconPencil />
+                                  </Button>
+                                )}
+                              </div>
+                              {locked ? (
+                                <p className="truncate text-xs text-muted-foreground">
+                                  {cabinet.lockReason}
+                                </p>
+                              ) : (
+                                cabinet.label && (
+                                  <p className="truncate text-xs text-muted-foreground">
+                                    {cabinet.name}
+                                  </p>
+                                )
+                              )}
+                            </div>
+                            <div className="flex shrink-0 items-center gap-2">
+                              {locked ? (
+                                <Tooltip>
+                                  <TooltipTrigger
+                                    render={
+                                      <span className="flex size-8 cursor-default items-center justify-center text-muted-foreground" />
+                                    }
+                                  >
+                                    <IconLock className="size-4" />
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    Кабінет недоступний - увімкнути його не
+                                    можна
+                                  </TooltipContent>
+                                </Tooltip>
+                              ) : (
+                                <Switch
+                                  checked={enabled}
+                                  onCheckedChange={(next) =>
+                                    setCabinetEnabled(
+                                      platform,
+                                      index,
+                                      cabinetIndex,
+                                      next
+                                    )
+                                  }
+                                  aria-label={`Кабінет ${cabinet.label ?? cabinet.name}`}
+                                />
+                              )}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )
+              })}
             </div>
-          )
-        })
-      )}
+          </div>
+        )
+      })}
       <ConnectDialog
         open={connectOpen}
         onOpenChange={setConnectOpen}
         platform={connectPlatform}
-        onPickPlatform={setConnectPlatform}
-        connectedAccounts={connectedAccounts}
         onConnect={(platform) => {
           setConnectedAccounts((prev) => {
             const existing = prev[platform.name] ?? []
