@@ -315,12 +315,18 @@ export function TreePicker({
   filters,
   onFilters,
   searchable,
+  variant = "secondary",
+  className,
 }: {
   label: string
   nodes: FilterNode[]
   filters: ReportFilters
   onFilters: (next: ReportFilters) => void
   searchable?: boolean
+  /** the trigger's skin - a toolbar draws it as one of its own buttons */
+  variant?: "secondary" | "outline"
+  /** the trigger's shape, for a row that is not a full-width panel */
+  className?: string
 }) {
   const [query, setQuery] = useState("")
   const needle = query.trim().toLowerCase()
@@ -335,9 +341,12 @@ export function TreePicker({
       <PopoverTrigger
         render={
           <Button
-            variant="secondary"
+            variant={variant}
             size="sm"
-            className="h-9 w-full justify-between gap-1.5 font-normal"
+            className={cn(
+              "h-9 w-full justify-between gap-1.5 font-normal",
+              className
+            )}
           >
             <span className="truncate">
               {label}:{" "}

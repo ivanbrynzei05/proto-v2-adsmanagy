@@ -3,14 +3,11 @@ import {
   IconChevronDown,
   IconColumns,
   IconRestore,
-  IconStack2,
-  IconWorld,
   IconX,
 } from "@tabler/icons-react"
 import { useMemo, useState } from "react"
 
 import { Button } from "@/components/ui/button"
-import { Checkbox } from "@/components/ui/checkbox"
 import {
   Sheet,
   SheetContent,
@@ -26,15 +23,10 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { cn } from "@/lib/utils"
-import {
-  COL_GROUPS,
-  COLUMNS,
-  PLATFORMS,
-  PRESETS,
-  type AdAccount,
-  type ColumnGroup,
-  type PlatformId,
-} from "./data"
+import { matchingAccounts, type ReportFilters } from "@/pages/statistics/data"
+import { useDraftFilters } from "@/pages/statistics/draft-filters"
+import { adsTree, TreePicker } from "@/pages/statistics/filter-tree"
+import { COL_GROUPS, COLUMNS, PRESETS, type ColumnGroup } from "./data"
 import { RangePanel } from "./date-range"
 import {
   datePresets,
@@ -42,43 +34,12 @@ import {
   startOfDay,
   type DateRange,
 } from "./date-utils"
-import { PlatformBadge } from "./platform-badge"
 import { ChipRow, ToggleChip } from "./toggle-chip"
 
 // stands for "any range that isn't one of the named presets"
 const CUSTOM_PERIOD = "__custom__"
 
 // ---- shared bits ----
-
-// full-width row with a checkbox - used for the multi-select lists (platforms,
-// ad accounts). The whole row is the hit target, the checkbox is decorative.
-function CheckRow({
-  checked,
-  onClick,
-  children,
-}: {
-  checked: boolean
-  onClick: () => void
-  children: React.ReactNode
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        "flex min-w-0 items-center gap-3 rounded-lg border px-3 py-2.5 text-left text-[13px] transition-colors",
-        checked ? "border-primary/40 bg-primary/[0.06]" : "border-border"
-      )}
-    >
-      <Checkbox
-        checked={checked}
-        className="pointer-events-none"
-        tabIndex={-1}
-      />
-      {children}
-    </button>
-  )
-}
 
 function Section({
   title,
@@ -117,14 +78,9 @@ export type FiltersSheetProps = {
   breakdowns: string[]
   onBreakdown: (b: string) => void
 
-  platforms: Set<PlatformId>
-  onTogglePlatform: (id: PlatformId) => void
-  onAllPlatforms: () => void
-
-  scopedAccounts: AdAccount[]
-  adAccounts: Set<string>
-  onToggleAdAccount: (id: string) => void
-  onAllAdAccounts: () => void
+  /** the one Реклама filter - платформа › бізнес-акаунт › кабінет */
+  ads: ReportFilters
+  onAds: (f: ReportFilters) => void
 
   visible: Record<string, boolean>
   onToggleColumn: (key: string) => void
@@ -134,8 +90,9 @@ export type FiltersSheetProps = {
 }
 
 // Bottom sheet that carries every filter the desktop toolbar spreads across
-// three rows. Changes apply live to the table underneath, so the footer button
-// only confirms and closes.
+// three rows. The period, the breakdown and the columns apply live to the table
+// underneath; the Реклама ticks are a draft the footer button hands over, the
+// same way the toolbar's own Застосувати does.
 export function CampaignFiltersSheet(props: FiltersSheetProps) {
   const {
     open,
@@ -145,13 +102,8 @@ export function CampaignFiltersSheet(props: FiltersSheetProps) {
     breakdown,
     breakdowns,
     onBreakdown,
-    platforms,
-    onTogglePlatform,
-    onAllPlatforms,
-    scopedAccounts,
-    adAccounts,
-    onToggleAdAccount,
-    onAllAdAccounts,
+    ads,
+    onAds,
     visible,
     onToggleColumn,
     onColumnPreset,
@@ -171,14 +123,28 @@ export function CampaignFiltersSheet(props: FiltersSheetProps) {
   const periodValue = isPresetPeriod ? periodLabel : CUSTOM_PERIOD
 
   const visibleCount = COLUMNS.filter((c) => visible[c.key]).length
-  const selectedAccounts = scopedAccounts.filter((a) => adAccounts.has(a.id))
+
+  const { draft, setDraft, dirty, apply, revert } = useDraftFilters(ads, onAds)
+  // a cabinet the ticked platforms rule out is still shown, but greyed
+  const adNodes = useMemo(
+    () =>
+      adsTree(matchingAccounts({ ...draft, accounts: [] }).map((a) => a.id)),
+    [draft]
+  )
+
+  // every way out of the sheet but the footer button leaves the table as it
+  // was, so the ad-source draft goes back with it
+  function dismiss(next: boolean) {
+    if (!next) revert()
+    onOpenChange(next)
+  }
 
   function close() {
-    onOpenChange(false)
+    dismiss(false)
   }
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
+    <Sheet open={open} onOpenChange={dismiss}>
       <SheetContent
         side="bottom"
         showCloseButton={false}
@@ -282,70 +248,16 @@ export function CampaignFiltersSheet(props: FiltersSheetProps) {
             </Select>
           </Section>
 
-          {/* platform */}
-          <Section
-            title="Платформа"
-            hint={`${platforms.size} з ${PLATFORMS.length}`}
-          >
-            <div className="flex flex-col gap-1.5">
-              {PLATFORMS.map((p) => (
-                <CheckRow
-                  key={p.id}
-                  checked={platforms.has(p.id)}
-                  onClick={() => onTogglePlatform(p.id)}
-                >
-                  <PlatformBadge id={p.id} size={16} />
-                  <span className="truncate">{p.label}</span>
-                </CheckRow>
-              ))}
-              {platforms.size < PLATFORMS.length && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="self-start"
-                  onClick={onAllPlatforms}
-                >
-                  <IconWorld className="size-4" />
-                  Обрати всі
-                </Button>
-              )}
-            </div>
-          </Section>
-
-          {/* ad accounts */}
-          <Section
-            title="Рекламні акаунти"
-            hint={`${selectedAccounts.length} з ${scopedAccounts.length}`}
-          >
-            {scopedAccounts.length === 0 ? (
-              <p className="rounded-lg border border-dashed px-3 py-4 text-center text-xs text-muted-foreground">
-                Немає акаунтів для цих платформ
-              </p>
-            ) : (
-              <div className="flex flex-col gap-1.5">
-                {scopedAccounts.map((a) => (
-                  <CheckRow
-                    key={a.id}
-                    checked={adAccounts.has(a.id)}
-                    onClick={() => onToggleAdAccount(a.id)}
-                  >
-                    <PlatformBadge id={a.platform} size={16} />
-                    <span className="truncate">{a.name}</span>
-                  </CheckRow>
-                ))}
-                {selectedAccounts.length < scopedAccounts.length && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="self-start"
-                    onClick={onAllAdAccounts}
-                  >
-                    <IconStack2 className="size-4" />
-                    Обрати всі
-                  </Button>
-                )}
-              </div>
-            )}
+          {/* Реклама - платформа › бізнес-акаунт › кабінет in one picker, the
+              same tree the Статистика panel is cut by */}
+          <Section title="Реклама">
+            <TreePicker
+              label="Джерела"
+              className="h-11"
+              nodes={adNodes}
+              filters={draft}
+              onFilters={setDraft}
+            />
           </Section>
 
           {/* columns */}
@@ -406,9 +318,16 @@ export function CampaignFiltersSheet(props: FiltersSheetProps) {
           </Section>
         </div>
 
-        {/* confirm */}
+        {/* confirm - always closes, and only rebuilds the table when the ad
+            sources actually changed */}
         <div className="shrink-0 border-t p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-          <Button className="h-11 w-full text-sm" onClick={close}>
+          <Button
+            className="h-11 w-full text-sm"
+            onClick={() => {
+              if (dirty) apply()
+              onOpenChange(false)
+            }}
+          >
             Застосувати
           </Button>
         </div>

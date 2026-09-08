@@ -23,10 +23,8 @@ import {
   IconRefresh,
   IconSearch,
   IconSpeakerphone,
-  IconStack2,
   IconTag,
   IconUser,
-  IconWorld,
   IconX,
   type Icon as TablerIcon,
 } from "@tabler/icons-react"
@@ -74,7 +72,14 @@ import type { TeamMember } from "@/features/team/types"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { cn } from "@/lib/utils"
 import {
-  AD_ACCOUNTS,
+  countFilters,
+  EMPTY_FILTERS,
+  matchingAccounts,
+  type ReportFilters,
+} from "@/pages/statistics/data"
+import { useDraftFilters } from "@/pages/statistics/draft-filters"
+import { adsTree, TreePicker } from "@/pages/statistics/filter-tree"
+import {
   AD_GROUPS,
   ADS,
   BUYOUT_DEPENDENT_KEYS,
@@ -84,7 +89,6 @@ import {
   CRM_METRIC_KEYS,
   fmt,
   parseProductId,
-  PLATFORMS,
   plural,
   PRESETS,
   PRODUCTS,
@@ -92,7 +96,6 @@ import {
   type Column,
   type ColumnGroup,
   type MetricKey,
-  type PlatformId,
   type Row,
 } from "./data"
 import { DateRangePicker } from "./date-range"
@@ -816,13 +819,10 @@ export function CampaignsPage() {
   const [sel, setSel] = useState<Set<number>>(() => new Set())
   const [activeMap, setActiveMap] = useState<Record<string, boolean>>({})
   const [entity, setEntity] = useState("Кампанії")
-  // data-source hierarchy: platform → ad account
-  const [platforms, setPlatforms] = useState<Set<PlatformId>>(
-    () => new Set(PLATFORMS.map((p) => p.id))
-  )
-  const [adAccounts, setAdAccounts] = useState<Set<string>>(
-    () => new Set(AD_ACCOUNTS.map((a) => a.id))
-  )
+  // Реклама - one filter over the whole source hierarchy (платформа ›
+  // бізнес-акаунт › кабінет), the same tree the Статистика panel is cut by.
+  // Empty is "усі": a tier narrows only once something in it is ticked.
+  const [ads, setAds] = useState<ReportFilters>(EMPTY_FILTERS)
   const showToggleCol = true
   // bulk selection is a desktop affordance - on a phone the frozen block has to
   // stay under ~210px, and rows are opened by tapping their name instead
@@ -889,10 +889,11 @@ export function CampaignsPage() {
     // open the shelf the campaign just joined, so the move is visible
     if (productId) setExpanded((s) => new Set(s).add(productId))
   }
-  // level 2 - ad accounts on the currently chosen platform(s)
-  const scopedAccounts = useMemo(
-    () => AD_ACCOUNTS.filter((a) => platforms.has(a.platform)),
-    [platforms]
+  // The cabinets the ticked tiers leave standing. A campaign belongs to exactly
+  // one of them, so this one set is what every tier of the filter comes down to.
+  const keptAccounts = useMemo(
+    () => new Set(matchingAccounts(ads).map((a) => a.id)),
+    [ads]
   )
 
   function drillOk(e: string, c: Row) {
@@ -910,9 +911,7 @@ export function CampaignsPage() {
     return true
   }
   function baseFilter(e: string, c: Row) {
-    return (
-      platforms.has(c.platform) && adAccounts.has(c.adAccount) && drillOk(e, c)
-    )
+    return keptAccounts.has(c.adAccount) && drillOk(e, c)
   }
 
   function setActive(c: Indexed, val: boolean) {
@@ -927,30 +926,18 @@ export function CampaignsPage() {
     setSel(new Set())
     pulse()
   }
-  const ALL_ACCOUNTS = () => new Set(AD_ACCOUNTS.map((a) => a.id))
-  // narrowing a level re-selects everything below it, so the filter never
-  // silently hides rows the user didn't intend to hide
-  function togglePlatform(id: PlatformId) {
-    setPlatforms((s) => {
-      const n = new Set(s)
-      if (n.has(id)) n.delete(id)
-      else n.add(id)
-      return n.size === 0 ? s : n
-    })
-    setAdAccounts(ALL_ACCOUNTS())
+  // A narrower source can hide the rows a selection or a drill-down was made
+  // on, so both are dropped whenever the filter lands - from the toolbar's
+  // button or from the sheet's.
+  function commitAds(next: ReportFilters) {
+    setAds(next)
     setSel(new Set())
     setDrill({ campaigns: [], groups: [] })
   }
-  function toggleAdAccount(id: string) {
-    setAdAccounts((s) => {
-      const n = new Set(s)
-      if (n.has(id)) n.delete(id)
-      else n.add(id)
-      return n
-    })
-    setSel(new Set())
-    setDrill({ campaigns: [], groups: [] })
-  }
+  // Ticking a cabinet does not rebuild the table - the filter is three tiers
+  // deep, and a set of ticks is only worth re-reading once it is finished.
+  // Застосувати is what hands the draft over.
+  const adDraft = useDraftFilters(ads, commitAds)
   function clearDrill() {
     setDrill({ campaigns: [], groups: [] })
   }
@@ -1000,7 +987,7 @@ export function CampaignsPage() {
       Оголошення: ADS.filter((c) => baseFilter("Оголошення", c)).length,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [platforms, adAccounts, drill]
+    [keptAccounts, drill]
   )
 
   // data-source + search filters (shared by the table and the counters)
@@ -1050,7 +1037,7 @@ export function CampaignsPage() {
     }
     return r
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [entity, platforms, adAccounts, drill, query, sort, activeMap, breakdown])
+  }, [entity, keptAccounts, drill, query, sort, activeMap, breakdown])
 
   const foot = useMemo(() => totals(rows), [rows])
   // a total built partly on the base buyout % is a forecast as well
@@ -1198,50 +1185,26 @@ export function CampaignsPage() {
   }
 
   const selCount = sel.size
-  const PLATFORM_BY_ID = useMemo(
+  // The one filter's own tree, rebuilt as the ticks above a cabinet change: a
+  // cabinet the picked platforms rule out is still shown, but greyed.
+  const adNodes = useMemo(
     () =>
-      Object.fromEntries(PLATFORMS.map((p) => [p.id, p])) as Record<
-        PlatformId,
-        (typeof PLATFORMS)[number]
-      >,
-    []
+      adsTree(
+        matchingAccounts({ ...adDraft.draft, accounts: [] }).map((a) => a.id)
+      ),
+    [adDraft.draft]
   )
-  // level 1 - platform
-  const platLabel =
-    platforms.size === PLATFORMS.length
-      ? "Усі платформи"
-      : platforms.size === 1
-        ? PLATFORM_BY_ID[[...platforms][0]].label
-        : platforms.size + " платформи"
-  // level 2 - ad account (scoped to the chosen platform(s))
-  const selAccounts = scopedAccounts.filter((a) => adAccounts.has(a.id))
-  const accLabel =
-    selAccounts.length === scopedAccounts.length
-      ? "Усі акаунти"
-      : selAccounts.length === 1
-        ? selAccounts[0].name
-        : selAccounts.length + " акаунти"
+  const adCount = countFilters(ads)
+  const adDraftCount = countFilters(adDraft.draft)
 
   // ---- mobile filter sheet plumbing ----
   const hiddenCols = allCols.length - cols.length
   // how many filters differ from the default - the number on the "Фільтри" pill
   const activeFilterCount =
-    (platforms.size < PLATFORMS.length ? 1 : 0) +
-    (selAccounts.length < scopedAccounts.length ? 1 : 0) +
+    adCount +
     (breakdown !== BREAKDOWN_PRODUCT ? 1 : 0) +
     (hiddenCols > 0 ? 1 : 0)
 
-  function selectAllPlatforms() {
-    setPlatforms(new Set(PLATFORMS.map((p) => p.id)))
-    setAdAccounts(ALL_ACCOUNTS())
-    setSel(new Set())
-    setDrill({ campaigns: [], groups: [] })
-  }
-  function selectAllAdAccounts() {
-    setAdAccounts(ALL_ACCOUNTS())
-    setSel(new Set())
-    setDrill({ campaigns: [], groups: [] })
-  }
   function applyColumnPreset(groups: ColumnGroup[] | null) {
     setVisible(
       Object.fromEntries(
@@ -1249,9 +1212,11 @@ export function CampaignsPage() {
       )
     )
   }
-  // "Скинути" in the sheet - back to the state the page opens in
+  // "Скинути" in the sheet - back to the state the page opens in. A fresh empty
+  // object rather than the shared constant, so a draft holding unapplied ticks
+  // is reset along with what was applied.
   function resetFilters() {
-    selectAllPlatforms()
+    commitAds({ ...EMPTY_FILTERS })
     applyColumnPreset(null)
     setBreakdown(BREAKDOWN_PRODUCT)
     setQuery("")
@@ -1833,106 +1798,34 @@ export function CampaignsPage() {
           </div>
         )}
 
-        {/* data-source hierarchy: platform › ad account - desktop only; on a
-            phone these live in the filter sheet */}
+        {/* Реклама - one picker over the whole source hierarchy; desktop only,
+            on a phone it lives in the filter sheet */}
         {!isMobile && (
-          <div className="flex flex-wrap items-center gap-x-1.5 gap-y-2 border-b p-3.5">
-            {/* level 1 - platform */}
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                render={
-                  <Button variant="outline" size="sm" className="gap-1.5">
-                    <IconWorld className="size-4 text-muted-foreground" />
-                    {platLabel}
-                    <IconChevronDown className="size-4 text-muted-foreground" />
-                  </Button>
-                }
-              />
-              <DropdownMenuContent align="start" className="w-56">
-                <DropdownMenuLabel className="tracking-wide uppercase">
-                  Платформа
-                </DropdownMenuLabel>
-                {PLATFORMS.map((p) => (
-                  <DropdownMenuCheckboxItem
-                    key={p.id}
-                    checked={platforms.has(p.id)}
-                    onCheckedChange={() => togglePlatform(p.id)}
-                    closeOnClick={false}
-                  >
-                    <span className="flex items-center gap-2">
-                      <PlatformBadge id={p.id} size={16} />
-                      {p.label}
-                    </span>
-                  </DropdownMenuCheckboxItem>
-                ))}
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  closeOnClick={false}
-                  onClick={() => {
-                    setPlatforms(new Set(PLATFORMS.map((p) => p.id)))
-                    setAdAccounts(ALL_ACCOUNTS())
-                    setSel(new Set())
-                    setDrill({ campaigns: [], groups: [] })
-                  }}
-                >
-                  Обрати всі
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-
-            <IconChevronRight className="size-4 shrink-0 text-muted-foreground/50" />
-
-            {/* level 2 - ad account (scoped to the chosen platform(s)) */}
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                render={
-                  <Button variant="outline" size="sm" className="gap-1.5">
-                    <IconStack2 className="size-4 text-muted-foreground" />
-                    {accLabel}
-                    <IconChevronDown className="size-4 text-muted-foreground" />
-                  </Button>
-                }
-              />
-              <DropdownMenuContent align="start" className="w-64">
-                <DropdownMenuLabel className="tracking-wide uppercase">
-                  Рекламні акаунти
-                </DropdownMenuLabel>
-                {scopedAccounts.length === 0 ? (
-                  <div className="px-2 py-4 text-center text-xs text-muted-foreground">
-                    Немає акаунтів для цих платформ
-                  </div>
-                ) : (
-                  scopedAccounts.map((a) => (
-                    <DropdownMenuCheckboxItem
-                      key={a.id}
-                      checked={adAccounts.has(a.id)}
-                      onCheckedChange={() => toggleAdAccount(a.id)}
-                      closeOnClick={false}
-                    >
-                      <span className="flex items-center gap-2">
-                        <PlatformBadge id={a.platform} size={15} />
-                        {a.name}
-                      </span>
-                    </DropdownMenuCheckboxItem>
-                  ))
-                )}
-                {scopedAccounts.length > 0 && (
-                  <>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem
-                      closeOnClick={false}
-                      onClick={() => {
-                        setAdAccounts(ALL_ACCOUNTS())
-                        setSel(new Set())
-                        setDrill({ campaigns: [], groups: [] })
-                      }}
-                    >
-                      Обрати всі
-                    </DropdownMenuItem>
-                  </>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-2 border-b p-3.5">
+            <TreePicker
+              label="Реклама"
+              variant="outline"
+              className="h-8 w-64"
+              nodes={adNodes}
+              filters={adDraft.draft}
+              onFilters={adDraft.setDraft}
+            />
+            {/* Dead until the draft says something the table is not already
+                built from - there is nothing to apply until then. */}
+            <Button size="sm" disabled={!adDraft.dirty} onClick={adDraft.apply}>
+              Застосувати
+            </Button>
+            {adDraftCount > 0 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-muted-foreground"
+                onClick={adDraft.clear}
+              >
+                <IconX />
+                Скинути
+              </Button>
+            )}
 
             <div className="ml-auto" />
             <RefreshControl />
@@ -2008,8 +1901,7 @@ export function CampaignsPage() {
               {[
                 rangeLabel(dateRange, startOfDay(new Date())),
                 breakdown,
-                platforms.size < PLATFORMS.length ? platLabel : null,
-                selAccounts.length < scopedAccounts.length ? accLabel : null,
+                adCount > 0 ? "Реклама: " + adCount : null,
               ]
                 .filter(Boolean)
                 .map((label, i) => (
@@ -2564,13 +2456,8 @@ export function CampaignsPage() {
           breakdown={breakdown}
           breakdowns={BREAKDOWNS}
           onBreakdown={switchBreakdown}
-          platforms={platforms}
-          onTogglePlatform={togglePlatform}
-          onAllPlatforms={selectAllPlatforms}
-          scopedAccounts={scopedAccounts}
-          adAccounts={adAccounts}
-          onToggleAdAccount={toggleAdAccount}
-          onAllAdAccounts={selectAllAdAccounts}
+          ads={ads}
+          onAds={commitAds}
           visible={visible}
           onToggleColumn={(key) =>
             setVisible((v) => ({ ...v, [key]: !v[key] }))
@@ -2628,11 +2515,10 @@ function CampaignsSkeleton({ cols }: { cols: number }) {
           </>
         ) : (
           <>
-            {/* data-source bar */}
+            {/* data-source bar - the Реклама picker and its Застосувати */}
             <div className="flex flex-wrap items-center gap-2 border-b p-3.5">
-              <Skeleton className="h-8 w-36" />
-              <Skeleton className="h-8 w-40" />
-              <Skeleton className="h-8 w-44" />
+              <Skeleton className="h-8 w-64" />
+              <Skeleton className="h-8 w-28" />
               <Skeleton className="ml-auto h-8 w-28" />
               <Skeleton className="size-8" />
             </div>
