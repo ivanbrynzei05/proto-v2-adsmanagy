@@ -10,6 +10,7 @@ import { TeamProvider } from "@/components/team-provider"
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { SubscriptionProvider } from "@/features/billing/subscription-context"
+import { PasswordPage } from "@/pages/auth/password"
 import { CampaignsPage } from "@/pages/campaigns/campaigns"
 import { ConnectAdsPage } from "@/pages/connect/connect-ads"
 import { DashboardPage } from "@/pages/dashboard/dashboard"
@@ -52,6 +53,7 @@ export function App() {
                         element={<PrivacyPolicyPage />}
                       />
                     </Route>
+                    <Route path="/auth/password" element={<PasswordPage />} />
                     <Route path="/onboarding" element={<OnboardingPage />} />
                     <Route
                       path="/connect/ads/:token"
