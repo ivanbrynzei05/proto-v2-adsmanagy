@@ -1,8 +1,5 @@
-import { IconFileInvoice } from "@tabler/icons-react"
-import { useState } from "react"
+import { useRef, useState } from "react"
 
-import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
   Table,
@@ -12,115 +9,116 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { HEAD, HEAD_LINE, TablePager } from "@/pages/statistics/table-controls"
 import {
-  PAYMENT_STATUS,
+  entryTitle,
   formatAmount,
-  formatPaymentDate,
-  type Payment,
+  formatLedgerDate,
+  formatSigned,
+  type LedgerEntry,
 } from "@/features/billing/payments"
+import { HEAD, HEAD_LINE, TablePager } from "@/pages/statistics/table-controls"
+import { cn } from "@/lib/utils"
 
-const PAGE_SIZE = 8
+const PAGE_SIZES: readonly number[] = [10, 20, 50]
 
 /**
- * Every charge made against the balance, newest first.
- *
- * A ledger grows without end, so it is handed out a page at a time the same way
- * the statistics tables are - the card keeps its height whether the account is
- * a week or three years old.
+ * The wallet ledger: every top-up, charge and refund, newest first. Paged the
+ * way the endpoint is - ?page, ?page_size.
  */
-export function PaymentHistory({ payments }: { payments: Payment[] }) {
+export function PaymentHistory({ entries }: { entries: LedgerEntry[] }) {
   const [page, setPage] = useState(1)
-  const pageSize = PAGE_SIZE
+  const [pageSize, setPageSize] = useState(PAGE_SIZES[0])
+  const anchor = useRef<HTMLDivElement>(null)
 
-  const pages = Math.max(1, Math.ceil(payments.length / pageSize))
-  // a top-up prepends a row, so the page under the reader can shift past the
-  // end of the list - the last page stands in for it rather than going blank
+  const pages = Math.max(1, Math.ceil(entries.length / pageSize))
   const current = Math.min(page, pages)
   const start = (current - 1) * pageSize
-  const end = Math.min(start + pageSize, payments.length)
-  const rows = payments.slice(start, end)
+  const end = Math.min(start + pageSize, entries.length)
+  const rows = entries.slice(start, end)
 
   return (
     <Card>
       <CardHeader className="border-b">
         <CardTitle className="text-[15px] font-bold tracking-tight">
-          Історія оплат
+          Історія операцій
         </CardTitle>
       </CardHeader>
+
       <CardContent className="flex flex-col gap-3">
-        <Table containerClassName="-mx-2">
-          <TableHeader>
-            <TableRow className="hover:bg-transparent">
-              <TableHead className={`${HEAD} ${HEAD_LINE}`}>Дата</TableHead>
-              <TableHead className={`${HEAD} ${HEAD_LINE}`}>
-                Призначення
-              </TableHead>
-              <TableHead className={`${HEAD} ${HEAD_LINE}`}>Спосіб</TableHead>
-              <TableHead className={`${HEAD} ${HEAD_LINE}`}>Статус</TableHead>
-              <TableHead className={`${HEAD} ${HEAD_LINE} text-right`}>
-                Сума
-              </TableHead>
-              <TableHead className={`${HEAD} ${HEAD_LINE} w-9`} />
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {rows.map((payment) => {
-              const status = PAYMENT_STATUS[payment.status]
-              return (
-                <TableRow key={payment.id}>
-                  <TableCell className="text-muted-foreground tabular-nums">
-                    {formatPaymentDate(payment.date)}
-                  </TableCell>
-                  <TableCell className="font-medium">
-                    {payment.kind}
-                    <span className="ml-2 text-xs text-muted-foreground tabular-nums">
-                      {payment.id}
-                    </span>
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {payment.method}
-                  </TableCell>
-                  <TableCell>
-                    <Badge
-                      variant="outline"
-                      className={`border-transparent ${status.className}`}
-                    >
-                      {status.label}
-                    </Badge>
-                  </TableCell>
+        <div ref={anchor}>
+          <Table containerClassName="-mx-2">
+            <TableHeader>
+              <TableRow className="hover:bg-transparent">
+                <TableHead className={`${HEAD} ${HEAD_LINE}`}>Дата</TableHead>
+                <TableHead className={`${HEAD} ${HEAD_LINE}`}>
+                  Операція
+                </TableHead>
+                <TableHead className={`${HEAD} ${HEAD_LINE} text-right`}>
+                  Сума
+                </TableHead>
+                <TableHead className={`${HEAD} ${HEAD_LINE} text-right`}>
+                  Баланс після
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.length === 0 ? (
+                <TableRow className="hover:bg-transparent">
                   <TableCell
-                    className={`text-right font-semibold tabular-nums ${
-                      payment.status === "failed"
-                        ? "text-muted-foreground line-through"
-                        : ""
-                    }`}
+                    colSpan={4}
+                    className="py-10 text-center text-muted-foreground"
                   >
-                    {formatAmount(payment.amount)}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      aria-label={`Рахунок ${payment.id}`}
-                    >
-                      <IconFileInvoice />
-                    </Button>
+                    Немає операцій
                   </TableCell>
                 </TableRow>
-              )
-            })}
-          </TableBody>
-        </Table>
+              ) : (
+                rows.map((entry) => {
+                  const when = formatLedgerDate(entry.created_at)
+                  return (
+                    <TableRow key={entry.id}>
+                      <TableCell className="whitespace-nowrap">
+                        <span className="block tabular-nums">{when.date}</span>
+                        <span className="block text-xs text-muted-foreground tabular-nums">
+                          {when.time}
+                        </span>
+                      </TableCell>
+                      <TableCell className="font-medium">
+                        {entryTitle(entry)}
+                      </TableCell>
+                      <TableCell
+                        className={cn(
+                          "text-right font-semibold whitespace-nowrap tabular-nums",
+                          entry.amount > 0 &&
+                            "text-emerald-600 dark:text-emerald-400"
+                        )}
+                      >
+                        {formatSigned(entry.amount)}
+                      </TableCell>
+                      <TableCell className="text-right whitespace-nowrap text-muted-foreground tabular-nums">
+                        {formatAmount(entry.balance_after)}
+                      </TableCell>
+                    </TableRow>
+                  )
+                })
+              )}
+            </TableBody>
+          </Table>
+        </div>
 
         <TablePager
-          bare
           page={current}
           pages={pages}
           onPage={setPage}
-          from={start + 1}
+          pageSize={pageSize}
+          onPageSize={(next) => {
+            setPageSize(next)
+            setPage(1)
+          }}
+          from={entries.length === 0 ? 0 : start + 1}
           to={end}
-          total={payments.length}
+          total={entries.length}
+          sizes={PAGE_SIZES}
+          anchor={anchor}
         />
       </CardContent>
     </Card>

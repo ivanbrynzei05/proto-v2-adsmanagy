@@ -1,214 +1,156 @@
-import {
-  IconCheck,
-  IconCircleCheckFilled,
-  IconCreditCard,
-  IconLoader2,
-  IconWallet,
-} from "@tabler/icons-react"
+import { IconCreditCard, IconLoader2 } from "@tabler/icons-react"
 import { useState } from "react"
 
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
-import { Separator } from "@/components/ui/separator"
-import { formatAmount } from "@/features/billing/payments"
+import {
+  formatAmount,
+  validateTopupAmount,
+  type TopupStatus,
+} from "@/features/billing/payments"
 import { cn } from "@/lib/utils"
 
-const PRESETS = [50, 100, 250, 500] as const
+const PRESETS: readonly number[] = [5, 10, 20, 50]
+const DEFAULT_PRESET = 10
 
-/** what the ledger calls a charge made on the provider's page */
-export const TOP_UP_METHOD = "Онлайн-оплата"
-
-type Phase = "form" | "paying" | "done"
-
-/**
- * Name a sum, then go and pay it.
- *
- * The card is chosen on the payment provider's own page, so this dialog only
- * settles the amount and hands off; the demo comes straight back with the
- * receipt, which takes over the same dialog rather than opening a second one -
- * the payment and its receipt are one act, and swapping the body keeps the new
- * balance in the place the reader was already looking.
- */
+/** name a sum and go to WayForPay; the outcome is shown once the payer is back */
 export function TopUpDialog({
   open,
   onOpenChange,
-  balance,
-  onPaid,
+  initialAmount,
+  onCheckout,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
-  balance: number
-  /** the demo charge went through - credit the balance and log the payment */
-  onPaid: (amount: number) => void
+  /** "Спробувати ще" reopens the dialog on the sum that failed */
+  initialAmount?: number
+  /**
+   * POST /wallet/topups answered with checkout_url - send the browser there.
+   * Prototype: the status WayForPay would return; Option/Alt-click declines.
+   */
+  onCheckout: (amount: number, status: TopupStatus) => void
 }) {
-  const [amount, setAmount] = useState<number>(PRESETS[1])
+  const [preset, setPreset] = useState<number | null>(DEFAULT_PRESET)
   const [custom, setCustom] = useState("")
-  const [phase, setPhase] = useState<Phase>("form")
+  const [redirecting, setRedirecting] = useState(false)
 
-  // a dialog opened again is a new payment, not the last one's receipt - reset
-  // during the render that opens it, so the form never flashes the old receipt
   const [wasOpen, setWasOpen] = useState(open)
   if (open !== wasOpen) {
     setWasOpen(open)
     if (open) {
-      setPhase("form")
-      setAmount(PRESETS[1])
-      setCustom("")
+      const isPreset =
+        initialAmount !== undefined && PRESETS.includes(initialAmount)
+      setPreset(
+        initialAmount === undefined
+          ? DEFAULT_PRESET
+          : isPreset
+            ? initialAmount
+            : null
+      )
+      setCustom(
+        initialAmount !== undefined && !isPreset ? String(initialAmount) : ""
+      )
+      setRedirecting(false)
     }
   }
 
-  const value = custom ? Number(custom) : amount
-  const valid = Number.isFinite(value) && value >= 5
+  const customError = validateTopupAmount(custom)
+  const value = custom ? Number(custom.replace(",", ".")) : (preset ?? 0)
+  const valid = custom ? customError === null : preset !== null
 
-  const pay = () => {
-    setPhase("paying")
-    // in the real thing this is the redirect to the provider and the return
-    // from it; the wait stands in for both
-    setTimeout(() => {
-      onPaid(value)
-      setPhase("done")
-    }, 1200)
+  const pay = (declined: boolean) => {
+    setRedirecting(true)
+    setTimeout(() => onCheckout(value, declined ? "declined" : "approved"), 800)
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md" showCloseButton={phase !== "paying"}>
-        {phase === "done" ? (
-          <SuccessBody
-            amount={value}
-            balance={balance}
-            onDone={() => onOpenChange(false)}
-          />
-        ) : (
-          <>
-            <DialogHeader>
-              <DialogTitle>Поповнення балансу</DialogTitle>
-              <DialogDescription>
-                Поточний баланс {formatAmount(balance)}
-              </DialogDescription>
-            </DialogHeader>
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!redirecting) onOpenChange(next)
+      }}
+    >
+      <DialogContent
+        className="max-w-md"
+        showCloseButton={!redirecting}
+        aria-describedby={undefined}
+      >
+        <DialogHeader>
+          <DialogTitle>Поповнення балансу</DialogTitle>
+        </DialogHeader>
 
-            <div className="grid grid-cols-4 gap-2">
-              {PRESETS.map((preset) => {
-                const active = !custom && preset === amount
-                return (
-                  <button
-                    key={preset}
-                    type="button"
-                    onClick={() => {
-                      setAmount(preset)
-                      setCustom("")
-                    }}
-                    className={cn(
-                      "h-10 rounded-lg border text-sm font-semibold tabular-nums transition-colors",
-                      active
-                        ? "border-primary bg-primary/10 text-primary"
-                        : "hover:bg-muted"
-                    )}
-                  >
-                    ${preset}
-                  </button>
-                )
-              })}
-            </div>
+        <div className="grid grid-cols-4 gap-2">
+          {PRESETS.map((amount) => {
+            const active = !custom && preset === amount
+            return (
+              <button
+                key={amount}
+                type="button"
+                disabled={redirecting}
+                onClick={() => {
+                  setPreset(amount)
+                  setCustom("")
+                }}
+                className={cn(
+                  "h-10 rounded-lg border text-sm font-semibold tabular-nums transition-colors disabled:opacity-50",
+                  active
+                    ? "border-primary bg-primary/10 text-primary"
+                    : "hover:bg-muted"
+                )}
+              >
+                ${amount}
+              </button>
+            )
+          })}
+        </div>
 
-            <div className="relative">
-              <span className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-sm text-muted-foreground">
-                $
-              </span>
-              <Input
-                value={custom}
-                inputMode="decimal"
-                placeholder="Інша сума"
-                onChange={(e) =>
-                  setCustom(e.target.value.replace(/[^\d.]/g, ""))
-                }
-                className="h-10 pl-6"
-              />
-            </div>
+        <div className="flex flex-col gap-1.5">
+          <div className="relative">
+            <span className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-sm text-muted-foreground">
+              $
+            </span>
+            <Input
+              value={custom}
+              inputMode="decimal"
+              placeholder="Інша сума"
+              disabled={redirecting}
+              aria-invalid={custom ? customError !== null : undefined}
+              onChange={(e) =>
+                setCustom(e.target.value.replace(/[^\d.,]/g, ""))
+              }
+              className="h-10 pl-6"
+            />
+          </div>
+          {custom && customError && (
+            <p className="text-xs text-destructive">{customError}</p>
+          )}
+        </div>
 
-            <Button
-              size="lg"
-              className="h-11 w-full gap-1.5 font-semibold"
-              disabled={!valid || phase === "paying"}
-              onClick={pay}
-            >
-              {phase === "paying" ? (
-                <>
-                  <IconLoader2 className="size-4 animate-spin" />
-                  Перенаправлення…
-                </>
-              ) : (
-                <>
-                  <IconCreditCard className="size-4" />
-                  Перейти до оплати{valid ? ` ${formatAmount(value)}` : ""}
-                </>
-              )}
-            </Button>
-          </>
-        )}
+        <Button
+          size="lg"
+          className="h-11 w-full gap-1.5 font-semibold"
+          disabled={!valid || redirecting}
+          onClick={(e) => pay(e.altKey)}
+        >
+          {redirecting ? (
+            <>
+              <IconLoader2 className="size-4 animate-spin" />
+              Перенаправлення на оплату…
+            </>
+          ) : (
+            <>
+              <IconCreditCard className="size-4" />
+              Перейти до оплати{valid ? ` ${formatAmount(value)}` : ""}
+            </>
+          )}
+        </Button>
       </DialogContent>
     </Dialog>
-  )
-}
-
-function SuccessBody({
-  amount,
-  balance,
-  onDone,
-}: {
-  amount: number
-  balance: number
-  onDone: () => void
-}) {
-  return (
-    <div className="flex flex-col items-center gap-5 pt-4 text-center">
-      <div className="flex size-16 items-center justify-center rounded-2xl bg-emerald-500/12 text-emerald-600 dark:text-emerald-400">
-        <IconCircleCheckFilled className="size-9" />
-      </div>
-      <div>
-        <DialogTitle className="text-lg">Оплата пройшла</DialogTitle>
-        <DialogDescription className="mt-1">
-          {formatAmount(amount)} зараховано на баланс
-        </DialogDescription>
-      </div>
-
-      <div className="w-full rounded-xl border bg-muted/30 p-3 text-left">
-        <div className="flex items-center justify-between gap-3 text-sm">
-          <span className="flex items-center gap-1.5 text-muted-foreground">
-            <IconCreditCard className="size-4" />
-            Оплата
-          </span>
-          <span className="font-medium tabular-nums">
-            {formatAmount(amount)}
-          </span>
-        </div>
-        <Separator className="my-3" />
-        <div className="flex items-center justify-between gap-3 text-sm">
-          <span className="flex items-center gap-1.5 text-muted-foreground">
-            <IconWallet className="size-4" />
-            Баланс
-          </span>
-          <span className="font-semibold tabular-nums">
-            {formatAmount(balance)}
-          </span>
-        </div>
-      </div>
-
-      <Button
-        className="h-11 w-full gap-1.5 rounded-xl font-semibold"
-        onClick={onDone}
-      >
-        Готово
-        <IconCheck className="size-4" />
-      </Button>
-    </div>
   )
 }
