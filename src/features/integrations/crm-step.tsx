@@ -253,6 +253,11 @@ function RailItem({
 // One status in the list. The whole row is a selection target - that's what
 // makes sorting a hundred statuses bearable - so the per-row category picker
 // stops the click from reaching it.
+//
+// On a phone the name is the thing that must survive, so everything around it
+// gives way: the id badge melts into a small prefix, the picker shrinks to a
+// chip as wide as its label, and a long name wraps beside it instead of being
+// cut off.
 function StatusRow({
   status,
   bucket,
@@ -277,11 +282,16 @@ function StatusRow({
       <Checkbox checked={checked} onCheckedChange={() => {}} />
       <Badge
         variant="secondary"
-        className="w-9 shrink-0 justify-center rounded-md px-1 font-mono text-[11px] tabular-nums sm:w-11"
+        className="hidden w-11 shrink-0 justify-center rounded-md font-mono text-[11px] tabular-nums sm:inline-flex"
       >
         {status.id}
       </Badge>
-      <span className="min-w-0 flex-1 truncate text-sm">{status.name}</span>
+      <span className="min-w-0 flex-1 text-sm break-words sm:truncate">
+        <span className="mr-1.5 font-mono text-[11px] text-muted-foreground tabular-nums sm:hidden">
+          {status.id}
+        </span>
+        {status.name}
+      </span>
       <div className="ml-auto shrink-0" onClick={(e) => e.stopPropagation()}>
         <Select
           value={bucket?.key ?? ""}
@@ -290,9 +300,9 @@ function StatusRow({
           <SelectTrigger
             size="sm"
             className={cn(
-              // narrow enough to share one line with the status name on a
-              // phone; the label truncates rather than wrapping the row
-              "w-36 text-[11px] sm:w-45 sm:text-sm",
+              // a fixed column on the desktop; on a phone a chip as wide as
+              // its label, without the chevron - the tint already says "tap"
+              "w-auto px-2 text-[11px] sm:w-45 sm:pr-2 sm:pl-2.5 sm:text-sm max-sm:[&>svg]:hidden",
               bucket ? bucket.tint : "border-dashed text-muted-foreground"
             )}
           >
@@ -307,12 +317,20 @@ function StatusRow({
                     {b.short}
                   </>
                 ) : (
-                  "Оберіть категорію"
+                  <>
+                    <span className="sm:hidden">Оберіть</span>
+                    <span className="hidden sm:inline">Оберіть категорію</span>
+                  </>
                 )
               }}
             </SelectValue>
           </SelectTrigger>
-          <SelectContent alignItemWithTrigger={false}>
+          {/* sized to its longest label, not to a chip that may be 60px wide */}
+          <SelectContent
+            align="end"
+            alignItemWithTrigger={false}
+            className="w-max min-w-(--anchor-width)"
+          >
             {STATUS_BUCKETS.map((b) => (
               <SelectItem key={b.key} value={b.key}>
                 <span className={cn("size-2 shrink-0 rounded-full", b.dot)} />
