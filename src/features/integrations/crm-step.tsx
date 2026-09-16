@@ -1,6 +1,7 @@
 import {
   IconArrowLeft,
   IconArrowRight,
+  IconArrowUp,
   IconCheck,
   IconChevronRight,
   IconCircleCheck,
@@ -218,7 +219,8 @@ function RailItem({
       disabled={mode === "off"}
       onClick={onClick}
       className={cn(
-        "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs transition-colors",
+        // a column on the desktop rail, a scrollable strip on a phone
+        "flex w-auto shrink-0 items-center gap-2 rounded-md px-2 py-1.5 text-xs transition-colors sm:w-full",
         mode === "off" && "opacity-40",
         // flat fill for the active line, like the app's own sidebar - no
         // raised pill floating on the rail
@@ -234,7 +236,7 @@ function RailItem({
       {/* the spacer keeps "Усі" aligned with the categories below it */}
       <span className={cn("size-2 shrink-0 rounded-full", dot)} />
       <span className="truncate">{label}</span>
-      <span className="ml-auto pl-1 tabular-nums opacity-60">{count}</span>
+      <span className="pl-1 tabular-nums opacity-60 sm:ml-auto">{count}</span>
     </button>
   )
   if (!hint) return item
@@ -268,19 +270,19 @@ function StatusRow({
     <div
       onClick={(e) => onToggle(e.shiftKey)}
       className={cn(
-        "flex cursor-pointer items-center gap-2.5 rounded-md px-2 py-1 transition-colors select-none",
+        "flex cursor-pointer items-center gap-2 rounded-md px-2 py-1 transition-colors select-none sm:gap-2.5",
         checked ? "bg-foreground/[0.06]" : "hover:bg-muted/60"
       )}
     >
       <Checkbox checked={checked} onCheckedChange={() => {}} />
       <Badge
         variant="secondary"
-        className="w-11 shrink-0 justify-center rounded-md font-mono text-[11px] tabular-nums"
+        className="w-9 shrink-0 justify-center rounded-md px-1 font-mono text-[11px] tabular-nums sm:w-11"
       >
         {status.id}
       </Badge>
-      <span className="truncate text-sm">{status.name}</span>
-      <div className="ml-auto pl-2" onClick={(e) => e.stopPropagation()}>
+      <span className="min-w-0 flex-1 truncate text-sm">{status.name}</span>
+      <div className="ml-auto shrink-0" onClick={(e) => e.stopPropagation()}>
         <Select
           value={bucket?.key ?? ""}
           onValueChange={(v) => onAssign(v as CrmStatusBucket)}
@@ -288,7 +290,9 @@ function StatusRow({
           <SelectTrigger
             size="sm"
             className={cn(
-              "w-45",
+              // narrow enough to share one line with the status name on a
+              // phone; the label truncates rather than wrapping the row
+              "w-36 text-[11px] sm:w-45 sm:text-sm",
               bucket ? bucket.tint : "border-dashed text-muted-foreground"
             )}
           >
@@ -418,15 +422,17 @@ function StatusMappingStep({
     // A fixed overall height with the list taking whatever is left: filters,
     // a search that finds four statuses, or a category grid that grows by a
     // row - none of it moves the dialog.
-    <div className="flex h-[66vh] flex-col gap-3">
+    <div className="flex h-[70vh] flex-col gap-2.5 sm:h-[66vh] sm:gap-3">
       {/* The job of this screen, stated once and hard to miss - with the
           account it applies to riding along on the same strip. */}
-      <div className="flex items-center gap-3 rounded-lg border bg-muted/40 px-3 py-2.5">
+      <div className="flex items-center gap-3 rounded-lg border bg-muted/40 px-3 py-2 sm:py-2.5">
         <IconListCheck className="size-5 shrink-0 text-muted-foreground" />
-        <p className="text-sm font-medium">
+        <p className="text-xs font-medium sm:text-sm">
           Звʼяжіть статуси вашої CRM з категоріями нашої аналітики
         </p>
-        <span className="ml-auto flex min-w-0 items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400">
+        {/* the account is in the dialog's other screens too - on a phone the
+            sentence gets the whole strip */}
+        <span className="ml-auto hidden min-w-0 items-center gap-1.5 text-xs text-emerald-600 sm:flex dark:text-emerald-400">
           <IconCircleCheck className="size-3.5 shrink-0" />
           <span className="truncate">{accountLabel}</span>
         </span>
@@ -434,12 +440,12 @@ function StatusMappingStep({
 
       {/* How far the sorting has got: one segment per category, the grey tail
           is what nobody has placed yet. */}
-      <div className="flex items-center gap-3">
-        <span className="text-sm whitespace-nowrap">
+      <div className="flex items-center gap-2 sm:gap-3">
+        <span className="text-xs whitespace-nowrap sm:text-sm">
           <span className="font-semibold tabular-nums">{placed}</span>
           <span className="text-muted-foreground"> з {statuses.length}</span>
         </span>
-        <div className="flex h-1.5 flex-1 gap-0.5 overflow-hidden rounded-full bg-muted">
+        <div className="flex h-1.5 min-w-8 flex-1 gap-0.5 overflow-hidden rounded-full bg-muted">
           {STATUS_BUCKETS.map((b) => {
             const share = statuses.length
               ? (countIn(b.key) / statuses.length) * 100
@@ -456,7 +462,7 @@ function StatusMappingStep({
         <Button
           variant="outline"
           size="sm"
-          className="gap-1.5"
+          className="shrink-0 gap-1.5 px-2.5 max-sm:text-xs sm:px-3"
           onClick={autoMatch}
         >
           <IconWand className="size-3.5" />
@@ -474,9 +480,11 @@ function StatusMappingStep({
         />
       </div>
 
-      <div className="flex min-h-0 flex-1 overflow-hidden rounded-lg border">
-        {/* Filters while nothing is selected, targets once something is. */}
-        <div className="flex w-52 shrink-0 flex-col gap-0.5 overflow-y-auto border-r bg-muted/25 p-1.5">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border sm:flex-row">
+        {/* Filters while nothing is selected, targets once something is. A
+            column beside the list on the desktop, a scrollable strip above it
+            on a phone - where 208px of rail would leave nothing for the list. */}
+        <div className="flex w-full shrink-0 [scrollbar-width:none] gap-0.5 overflow-x-auto border-b bg-muted/25 p-1.5 sm:w-52 sm:flex-col sm:overflow-x-visible sm:overflow-y-auto sm:border-r sm:border-b-0 [&::-webkit-scrollbar]:hidden">
           <RailItem
             label="Усі"
             count={statuses.length}
@@ -491,7 +499,7 @@ function StatusMappingStep({
             active={filter === FILTER_LOOSE}
             onClick={() => setFilter(FILTER_LOOSE)}
           />
-          <div className="my-1 h-px shrink-0 bg-border" />
+          <div className="mx-1 w-px shrink-0 self-stretch bg-border sm:mx-0 sm:my-1 sm:h-px sm:w-full sm:self-auto" />
           {STATUS_BUCKETS.map((b) => (
             <RailItem
               key={b.key}
@@ -508,7 +516,7 @@ function StatusMappingStep({
           ))}
         </div>
 
-        <div className="flex min-w-0 flex-1 flex-col">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           <div className="flex h-11 shrink-0 items-center gap-2 border-b px-2">
             <Checkbox
               checked={allVisiblePicked}
@@ -533,8 +541,9 @@ function StatusMappingStep({
                     {picked.size}
                   </span>
                 </span>
-                {/* points back at the rail, where the selection can land */}
-                <IconArrowLeft className="size-3.5 shrink-0 text-muted-foreground" />
+                {/* points back at the rail, wherever it currently sits */}
+                <IconArrowUp className="size-3.5 shrink-0 text-muted-foreground sm:hidden" />
+                <IconArrowLeft className="hidden size-3.5 shrink-0 text-muted-foreground sm:block" />
                 <Button
                   variant="ghost"
                   size="icon-sm"
@@ -691,7 +700,7 @@ function CrmDialog({
       <DialogContent
         className={cn(
           "z-[60] data-ending-style:-translate-y-1/2 data-starting-style:-translate-y-1/2",
-          phase === "mapping" ? "max-w-4xl" : "max-w-md"
+          phase === "mapping" ? "max-w-4xl max-sm:p-4" : "max-w-md"
         )}
         overlayClassName="z-[60] backdrop-blur-md"
       >
