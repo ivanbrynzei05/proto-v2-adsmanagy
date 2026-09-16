@@ -221,7 +221,13 @@ function CodeBoxes({
   }
 
   return (
-    <div className="flex gap-2" role="group" aria-label="Пароль з листа">
+    // fixed squares in a centred group rather than boxes stretched across the
+    // form - 44px is still a comfortable tap target on a phone
+    <div
+      className="flex justify-center gap-2"
+      role="group"
+      aria-label="Пароль з листа"
+    >
       {code.map((char, i) => (
         <input
           key={i}
@@ -238,7 +244,7 @@ function CodeBoxes({
           aria-label={`Символ ${i + 1}`}
           aria-invalid={invalid || undefined}
           className={cn(
-            "h-12 w-full min-w-0 rounded-xl border-0 bg-slate-100 text-center text-lg font-bold uppercase shadow-none transition-[background-color,box-shadow] outline-none",
+            "size-11 shrink-0 rounded-[10px] border-0 bg-slate-100 text-center text-base font-bold uppercase shadow-none transition-[background-color,box-shadow] outline-none",
             "hover:bg-slate-200 focus:bg-white focus:ring-2 focus:ring-blue-600",
             "dark:bg-slate-800 dark:hover:bg-slate-700 dark:focus:bg-slate-900 dark:focus:ring-blue-500",
             invalid && "text-rose-500 ring-2 ring-rose-400 dark:ring-rose-500"
