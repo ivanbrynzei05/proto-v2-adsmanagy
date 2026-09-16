@@ -1,19 +1,22 @@
 import {
+  IconArrowLeft,
   IconArrowRight,
   IconCheck,
   IconChevronRight,
   IconCircleCheck,
   IconDatabase,
-  IconHelpCircle,
   IconInfoCircle,
   IconKey,
   IconListCheck,
   IconLoader2,
   IconPencil,
+  IconSearch,
   IconTrash,
   IconWand,
+  IconX,
 } from "@tabler/icons-react"
 import {
+  useRef,
   useState,
   type Dispatch,
   type ReactNode,
@@ -23,17 +26,7 @@ import {
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import {
-  Combobox,
-  ComboboxChip,
-  ComboboxChips,
-  ComboboxContent,
-  ComboboxEmpty,
-  ComboboxInput,
-  ComboboxInputGroup,
-  ComboboxItem,
-  ComboboxList,
-} from "@/components/ui/combobox"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   Dialog,
   DialogContent,
@@ -44,6 +37,13 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
@@ -53,7 +53,6 @@ import { CrmLogo } from "./logos"
 import {
   autoMatchStatus,
   CRM_STATUS_CATEGORIES,
-  CRM_STATUS_IGNORE,
   CRM_TYPES,
   MOCK_CRM_STATUSES,
   pluralizeIntegration,
@@ -64,36 +63,30 @@ import {
   type CrmType,
 } from "./types"
 
-// The analytics buckets a CRM status can land in, in display order: the real
-// categories first, then the "ignore" pseudo-bucket. Each bucket gets its own
-// multiselect, so the user gathers every status that belongs to it in one place.
+// The analytics categories a CRM status can land in. Every status ends up in
+// one of them - there is no "don't count it" bucket - and the mapping starts
+// out empty, so the list is the work the user came here to do.
 type StatusBucket = {
   key: CrmStatusBucket
   label: string
+  short: string
   hint: string
   dot: string
   tint: string
   required?: boolean
 }
 
-const STATUS_BUCKETS: StatusBucket[] = CRM_STATUS_CATEGORIES.map((c) => ({
-  key: c.key,
-  label: c.label,
-  hint: c.hint,
-  dot: c.dot,
-  tint: c.tint,
-  required: c.required,
-}))
+const STATUS_BUCKETS: StatusBucket[] = CRM_STATUS_CATEGORIES
 
 const VALID_BUCKET_KEYS = new Set<string>(STATUS_BUCKETS.map((b) => b.key))
 
-// A status counts as placed only when it sits in a bucket we actually surface.
-// Auto-match can occasionally guess a bucket we don't show - treat those as
-// still loose so the user can place them rather than silently losing them.
+// A status counts as placed only when it sits in a category we still surface -
+// a connection saved under an older set of categories reopens as unplaced
+// rather than silently keeping a bucket that no longer exists.
 const isStatusPlaced = (mapping: CrmStatusMapping, id: string) =>
   Boolean(mapping[id]) && VALID_BUCKET_KEYS.has(mapping[id])
 
-// The bucket a status currently belongs to, or undefined while it's loose.
+// The category a status belongs to, or undefined while it's still unplaced.
 const bucketOf = (mapping: CrmStatusMapping, id: string) =>
   STATUS_BUCKETS.find((b) => b.key === mapping[id])
 
@@ -113,9 +106,12 @@ const EDGE_FADE = {
 // much of the content fits, plus a faded edge wherever there's more behind it.
 function ScrollBox({
   className,
+  rootClassName,
   children,
 }: {
   className?: string
+  /** on the positioned wrapper - how the box sits in its parent's layout */
+  rootClassName?: string
   children: ReactNode
 }) {
   const [bar, setBar] = useState({
@@ -159,7 +155,7 @@ function ScrollBox({
           : EDGE_FADE.none
 
   return (
-    <div className="relative">
+    <div className={cn("relative", rootClassName)}>
       <div
         ref={measure}
         onScroll={(e) => measure(e.currentTarget)}
@@ -183,112 +179,154 @@ function ScrollBox({
   )
 }
 
-// One analytics bucket and the statuses placed in it. The multiselect offers
-// every status that's still free (or already here); statuses already claimed by
-// another bucket aren't listed - the user removes them there first. Selected
-// statuses show as removable chips.
-function CategoryMappingRow({
-  bucket,
-  statuses,
-  mapping,
-  onChange,
-}: {
-  bucket: StatusBucket
-  statuses: CrmStatusOption[]
-  mapping: CrmStatusMapping
-  onChange: (next: CrmStatusOption[]) => void
-}) {
-  const selected = statuses.filter((s) => mapping[s.id] === bucket.key)
-  const available = statuses.filter(
-    (s) => mapping[s.id] === bucket.key || !isStatusPlaced(mapping, s.id)
-  )
+// The two filters that aren't categories: everything, and everything still loose.
+const FILTER_ALL = "all"
+const FILTER_LOOSE = "loose"
+type FilterKey = typeof FILTER_ALL | typeof FILTER_LOOSE | CrmStatusBucket
 
-  return (
-    <div
+// One line of the category rail beside the list. The rail is the only place
+// categories are listed and it does double duty: with nothing selected a line
+// filters the list, with rows selected it's where that selection goes. It runs
+// down the side rather than across the top, so a seventh or tenth category is
+// just another line instead of another squeeze.
+//
+// "filter" - a line you can look through; "assign" - a line you can send the
+// selection to; "off" - "Усі" and "Не розподілені" while assigning, since a
+// selection can't be moved into either of them.
+type RailMode = "filter" | "assign" | "off"
+
+function RailItem({
+  label,
+  count,
+  dot,
+  hint,
+  mode,
+  active,
+  onClick,
+}: {
+  label: string
+  count: number
+  dot?: string
+  hint?: string
+  mode: RailMode
+  active: boolean
+  onClick: () => void
+}) {
+  const item = (
+    <button
+      type="button"
+      disabled={mode === "off"}
+      onClick={onClick}
       className={cn(
-        "flex items-start gap-3 rounded-lg border p-2.5 transition-colors",
-        selected.length > 0 ? "bg-muted/40" : "border-dashed"
+        "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs transition-colors",
+        mode === "off" && "opacity-40",
+        // flat fill for the active line, like the app's own sidebar - no
+        // raised pill floating on the rail
+        mode === "filter" &&
+          (active
+            ? "bg-foreground/[0.08] font-medium text-foreground"
+            : "text-muted-foreground hover:bg-foreground/[0.04]"),
+        // raised while assigning, so the rail reads as a set of targets
+        mode === "assign" &&
+          "bg-background ring-1 ring-border hover:ring-foreground/30"
       )}
     >
-      <div className="flex items-center gap-2 pt-1.5 whitespace-nowrap">
-        <span className={cn("size-2 shrink-0 rounded-full", bucket.dot)} />
-        <span className="text-sm font-medium">
-          {bucket.label}
-          {bucket.required && (
-            <span
-              className="ml-0.5 text-rose-500"
-              title="Обовʼязкова категорія"
-            >
-              *
-            </span>
-          )}
-        </span>
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <button
-                type="button"
-                aria-label={`Які статуси обрати: ${bucket.label}`}
-                className="text-muted-foreground transition-colors hover:text-foreground"
-              >
-                <IconHelpCircle className="size-4" />
-              </button>
-            }
-          />
-          <TooltipContent className="max-w-[280px] leading-relaxed">
-            {bucket.hint}
-          </TooltipContent>
-        </Tooltip>
-      </div>
-      <div className="ml-auto flex items-start gap-2">
-        <IconArrowRight className="size-6 shrink-0 pt-1.5 text-muted-foreground" />
-        <Combobox<CrmStatusOption, true>
-          multiple
-          modal={false}
-          items={available}
-          value={selected}
-          onValueChange={onChange}
-          itemToStringLabel={(s) => s.name}
-          isItemEqualToValue={(a, b) => a.id === b.id}
+      {/* the spacer keeps "Усі" aligned with the categories below it */}
+      <span className={cn("size-2 shrink-0 rounded-full", dot)} />
+      <span className="truncate">{label}</span>
+      <span className="ml-auto pl-1 tabular-nums opacity-60">{count}</span>
+    </button>
+  )
+  if (!hint) return item
+  return (
+    <Tooltip>
+      <TooltipTrigger render={item} />
+      <TooltipContent side="right" className="max-w-[280px] leading-relaxed">
+        {hint}
+      </TooltipContent>
+    </Tooltip>
+  )
+}
+
+// One status in the list. The whole row is a selection target - that's what
+// makes sorting a hundred statuses bearable - so the per-row category picker
+// stops the click from reaching it.
+function StatusRow({
+  status,
+  bucket,
+  checked,
+  onToggle,
+  onAssign,
+}: {
+  status: CrmStatusOption
+  bucket?: StatusBucket
+  checked: boolean
+  onToggle: (extend: boolean) => void
+  onAssign: (bucket: CrmStatusBucket) => void
+}) {
+  return (
+    <div
+      onClick={(e) => onToggle(e.shiftKey)}
+      className={cn(
+        "flex cursor-pointer items-center gap-2.5 rounded-md px-2 py-1 transition-colors select-none",
+        checked ? "bg-foreground/[0.06]" : "hover:bg-muted/60"
+      )}
+    >
+      <Checkbox checked={checked} onCheckedChange={() => {}} />
+      <Badge
+        variant="secondary"
+        className="w-11 shrink-0 justify-center rounded-md font-mono text-[11px] tabular-nums"
+      >
+        {status.id}
+      </Badge>
+      <span className="truncate text-sm">{status.name}</span>
+      <div className="ml-auto pl-2" onClick={(e) => e.stopPropagation()}>
+        <Select
+          value={bucket?.key ?? ""}
+          onValueChange={(v) => onAssign(v as CrmStatusBucket)}
         >
-          <div className="w-84 shrink-0">
-            <ComboboxInputGroup>
-              <ComboboxChips>
-                {selected.map((s) => (
-                  <ComboboxChip key={s.id} title={s.name}>
-                    {s.id}
-                  </ComboboxChip>
-                ))}
-                <ComboboxInput
-                  placeholder={
-                    selected.length > 0 ? "Додати статус…" : "Оберіть статуси…"
-                  }
-                />
-              </ComboboxChips>
-            </ComboboxInputGroup>
-            <ComboboxContent align="start" className="w-84 max-w-none">
-              <ComboboxEmpty>Немає вільних статусів</ComboboxEmpty>
-              <ComboboxList>
-                {(status: CrmStatusOption) => (
-                  <ComboboxItem key={status.id} value={status}>
-                    <Badge
-                      variant="secondary"
-                      className="shrink-0 rounded-md font-mono text-[11px] tabular-nums"
-                    >
-                      {status.id}
-                    </Badge>
-                    <span className="truncate">{status.name}</span>
-                  </ComboboxItem>
-                )}
-              </ComboboxList>
-            </ComboboxContent>
-          </div>
-        </Combobox>
+          <SelectTrigger
+            size="sm"
+            className={cn(
+              "w-45",
+              bucket ? bucket.tint : "border-dashed text-muted-foreground"
+            )}
+          >
+            <SelectValue>
+              {(v: string) => {
+                const b = STATUS_BUCKETS.find((x) => x.key === v)
+                return b ? (
+                  <>
+                    <span
+                      className={cn("size-2 shrink-0 rounded-full", b.dot)}
+                    />
+                    {b.short}
+                  </>
+                ) : (
+                  "Оберіть категорію"
+                )
+              }}
+            </SelectValue>
+          </SelectTrigger>
+          <SelectContent alignItemWithTrigger={false}>
+            {STATUS_BUCKETS.map((b) => (
+              <SelectItem key={b.key} value={b.key}>
+                <span className={cn("size-2 shrink-0 rounded-full", b.dot)} />
+                {b.short}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
     </div>
   )
 }
 
+// Sorting an account's hundred-odd statuses one dropdown at a time would take
+// all day, so the screen is built around bulk work: auto-match does the obvious
+// ones, the filters narrow the list to what's left, and a selection of rows
+// goes into a category in one click. The per-row picker stays for the handful
+// of statuses that need a decision of their own.
 function StatusMappingStep({
   accountLabel,
   statuses,
@@ -300,12 +338,76 @@ function StatusMappingStep({
   mapping: CrmStatusMapping
   setMapping: Dispatch<SetStateAction<CrmStatusMapping>>
 }) {
-  // Fill in confident guesses for any status the user hasn't touched yet.
+  const [query, setQuery] = useState("")
+  const [filter, setFilter] = useState<FilterKey>(FILTER_ALL)
+  const [picked, setPicked] = useState<Set<string>>(new Set())
+  // Where the last click landed, so shift-click knows what range to take.
+  const anchor = useRef<string | null>(null)
+
+  const placed = statuses.filter((s) => isStatusPlaced(mapping, s.id)).length
+  const countIn = (key: CrmStatusBucket) =>
+    statuses.filter((s) => mapping[s.id] === key).length
+
+  // The CRM hands the statuses back in its own order; the list shows them by
+  // id, so a status is where its number says it is.
+  const ordered = [...statuses].sort(
+    (a, b) => Number(a.id) - Number(b.id) || a.id.localeCompare(b.id)
+  )
+
+  const q = query.trim().toLowerCase()
+  const visible = ordered.filter((s) => {
+    if (q && !s.name.toLowerCase().includes(q) && !s.id.includes(q))
+      return false
+    if (filter === FILTER_ALL) return true
+    if (filter === FILTER_LOOSE) return !isStatusPlaced(mapping, s.id)
+    return mapping[s.id] === filter
+  })
+
+  const assign = (ids: string[], bucket: CrmStatusBucket) =>
+    setMapping((prev) => {
+      const next = { ...prev }
+      for (const id of ids) next[id] = bucket
+      return next
+    })
+
+  // Bulk assignment empties the selection: the rows it touched usually leave
+  // the current filter, and keeping them selected off-screen only misleads.
+  const assignPicked = (bucket: CrmStatusBucket) => {
+    assign([...picked], bucket)
+    setPicked(new Set())
+  }
+
+  const toggle = (id: string, extend: boolean) => {
+    setPicked((prev) => {
+      const next = new Set(prev)
+      const from = visible.findIndex((s) => s.id === anchor.current)
+      const to = visible.findIndex((s) => s.id === id)
+      // Shift-click takes everything between the two rows, as in a file list.
+      if (extend && from !== -1 && to !== -1) {
+        const [a, b] = from < to ? [from, to] : [to, from]
+        for (let i = a; i <= b; i++) next.add(visible[i].id)
+        return next
+      }
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+    anchor.current = id
+  }
+
+  const pickedVisible = visible.filter((s) => picked.has(s.id)).length
+  const allVisiblePicked =
+    visible.length > 0 && pickedVisible === visible.length
+  // A selection turns the category grid from filters into drop targets.
+  const assigning = picked.size > 0
+
+  // An accelerator, never a starting point: the screen opens empty, and this
+  // only fills in the statuses the user hasn't decided on yet.
   const autoMatch = () =>
     setMapping((prev) => {
       const next = { ...prev }
       for (const s of statuses) {
-        if (next[s.id]) continue
+        if (isStatusPlaced(next, s.id)) continue
         const guess = autoMatchStatus(s.name)
         if (guess) next[s.id] = guess
       }
@@ -313,42 +415,44 @@ function StatusMappingStep({
     })
 
   return (
-    <div className="flex flex-col gap-3">
-      <div className="mb-5 flex items-center gap-2 rounded-lg bg-emerald-500/10 px-3 py-2 text-sm text-emerald-700 dark:text-emerald-400">
-        <IconCircleCheck className="size-4 shrink-0" />
-        <span className="truncate">
-          Підключено · <span className="font-medium">{accountLabel}</span>
+    // A fixed overall height with the list taking whatever is left: filters,
+    // a search that finds four statuses, or a category grid that grows by a
+    // row - none of it moves the dialog.
+    <div className="flex h-[66vh] flex-col gap-3">
+      {/* The job of this screen, stated once and hard to miss - with the
+          account it applies to riding along on the same strip. */}
+      <div className="flex items-center gap-3 rounded-lg border bg-muted/40 px-3 py-2.5">
+        <IconListCheck className="size-5 shrink-0 text-muted-foreground" />
+        <p className="text-sm font-medium">
+          Звʼяжіть статуси вашої CRM з категоріями нашої аналітики
+        </p>
+        <span className="ml-auto flex min-w-0 items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400">
+          <IconCircleCheck className="size-3.5 shrink-0" />
+          <span className="truncate">{accountLabel}</span>
         </span>
       </div>
 
-      {/* Every status the account has. Each one takes on the colour of the
-          category it lands in, so the wall of grey badges turns into a map of
-          what's already sorted and what still needs a home. */}
-      <div className="flex flex-col gap-1.5 rounded-lg border bg-muted/20 p-2.5">
-        <span className="text-xs text-muted-foreground">Статуси з CRM:</span>
-        <ScrollBox className="flex max-h-32 flex-wrap gap-1.5">
-          {statuses.map((s) => {
-            const bucket = bucketOf(mapping, s.id)
+      {/* How far the sorting has got: one segment per category, the grey tail
+          is what nobody has placed yet. */}
+      <div className="flex items-center gap-3">
+        <span className="text-sm whitespace-nowrap">
+          <span className="font-semibold tabular-nums">{placed}</span>
+          <span className="text-muted-foreground"> з {statuses.length}</span>
+        </span>
+        <div className="flex h-1.5 flex-1 gap-0.5 overflow-hidden rounded-full bg-muted">
+          {STATUS_BUCKETS.map((b) => {
+            const share = statuses.length
+              ? (countIn(b.key) / statuses.length) * 100
+              : 0
             return (
-              <Badge
-                key={s.id}
-                variant="outline"
-                className={cn(
-                  "gap-1 font-normal transition-colors",
-                  bucket?.tint
-                )}
-              >
-                <span className="font-mono text-[11px] font-semibold tabular-nums">
-                  {s.id}
-                </span>
-                {s.name}
-              </Badge>
+              <div
+                key={b.key}
+                className={cn("h-full transition-all", b.dot)}
+                style={{ width: `${share}%` }}
+              />
             )
           })}
-        </ScrollBox>
-      </div>
-
-      <div className="flex items-center justify-end">
+        </div>
         <Button
           variant="outline"
           size="sm"
@@ -360,31 +464,118 @@ function StatusMappingStep({
         </Button>
       </div>
 
-      <ScrollBox className="flex max-h-[42vh] flex-col gap-2">
-        {STATUS_BUCKETS.map((bucket) => (
-          <CategoryMappingRow
-            key={bucket.key}
-            bucket={bucket}
-            statuses={statuses}
-            mapping={mapping}
-            onChange={(next) =>
-              setMapping((prev) => {
-                const updated = { ...prev }
-                const nextIds = new Set(next.map((s) => s.id))
-                // Drop statuses that left this bucket…
-                for (const s of statuses) {
-                  if (updated[s.id] === bucket.key && !nextIds.has(s.id)) {
-                    delete updated[s.id]
-                  }
-                }
-                // …and (re)assign the current picks to it.
-                for (const id of nextIds) updated[id] = bucket.key
-                return updated
-              })
-            }
+      <div className="relative">
+        <IconSearch className="absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Пошук статусу"
+          className="pl-8"
+        />
+      </div>
+
+      <div className="flex min-h-0 flex-1 overflow-hidden rounded-lg border">
+        {/* Filters while nothing is selected, targets once something is. */}
+        <div className="flex w-52 shrink-0 flex-col gap-0.5 overflow-y-auto border-r bg-muted/25 p-1.5">
+          <RailItem
+            label="Усі"
+            count={statuses.length}
+            mode={assigning ? "off" : "filter"}
+            active={filter === FILTER_ALL}
+            onClick={() => setFilter(FILTER_ALL)}
           />
-        ))}
-      </ScrollBox>
+          <RailItem
+            label="Не розподілені"
+            count={statuses.length - placed}
+            mode={assigning ? "off" : "filter"}
+            active={filter === FILTER_LOOSE}
+            onClick={() => setFilter(FILTER_LOOSE)}
+          />
+          <div className="my-1 h-px shrink-0 bg-border" />
+          {STATUS_BUCKETS.map((b) => (
+            <RailItem
+              key={b.key}
+              label={b.short}
+              count={countIn(b.key)}
+              dot={b.dot}
+              hint={b.hint}
+              mode={assigning ? "assign" : "filter"}
+              active={filter === b.key}
+              onClick={() =>
+                assigning ? assignPicked(b.key) : setFilter(b.key)
+              }
+            />
+          ))}
+        </div>
+
+        <div className="flex min-w-0 flex-1 flex-col">
+          <div className="flex h-11 shrink-0 items-center gap-2 border-b px-2">
+            <Checkbox
+              checked={allVisiblePicked}
+              indeterminate={pickedVisible > 0 && !allVisiblePicked}
+              disabled={visible.length === 0}
+              onCheckedChange={(checked) =>
+                setPicked((prev) => {
+                  const next = new Set(prev)
+                  for (const s of visible) {
+                    if (checked) next.add(s.id)
+                    else next.delete(s.id)
+                  }
+                  return next
+                })
+              }
+            />
+            {assigning ? (
+              <>
+                <span className="text-xs whitespace-nowrap">
+                  Обрано{" "}
+                  <span className="font-semibold tabular-nums">
+                    {picked.size}
+                  </span>
+                </span>
+                {/* points back at the rail, where the selection can land */}
+                <IconArrowLeft className="size-3.5 shrink-0 text-muted-foreground" />
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  className="ml-auto shrink-0 text-muted-foreground"
+                  aria-label="Зняти виділення"
+                  onClick={() => setPicked(new Set())}
+                >
+                  <IconX className="size-4" />
+                </Button>
+              </>
+            ) : (
+              <span className="text-xs text-muted-foreground tabular-nums">
+                {visible.length === statuses.length
+                  ? `${statuses.length} статусів`
+                  : `${visible.length} з ${statuses.length}`}
+              </span>
+            )}
+          </div>
+
+          <ScrollBox
+            rootClassName="min-h-0 flex-1"
+            className="flex h-full flex-col gap-0.5 p-1.5"
+          >
+            {visible.map((s) => (
+              <StatusRow
+                key={s.id}
+                status={s}
+                bucket={bucketOf(mapping, s.id)}
+                checked={picked.has(s.id)}
+                onToggle={(extend) => toggle(s.id, extend)}
+                onAssign={(bucket) => assign([s.id], bucket)}
+              />
+            ))}
+            {visible.length === 0 && (
+              <p className="py-10 text-center text-sm text-muted-foreground">
+                Нічого не знайдено
+              </p>
+            )}
+          </ScrollBox>
+        </div>
+      </div>
     </div>
   )
 }
@@ -455,21 +646,9 @@ function CrmDialog({
     // Mock the API round-trip that fetches the account's order statuses.
     window.setTimeout(() => {
       setStatuses(MOCK_CRM_STATUSES)
-      setMapping((prev) => {
-        const next: CrmStatusMapping = {}
-        for (const s of MOCK_CRM_STATUSES) {
-          // Decisions already made survive a re-check; only statuses nobody has
-          // placed yet get a guess, so the user resolves just the ambiguous ones.
-          const kept = prev[s.id]
-          if (kept) {
-            next[s.id] = kept
-            continue
-          }
-          const guess = autoMatchStatus(s.name)
-          if (guess) next[s.id] = guess
-        }
-        return next
-      })
+      // Nothing is guessed on the way in: a fresh connection lands on an empty
+      // mapping and the user places the statuses. Decisions already made on a
+      // re-check survive untouched.
       setPhase("mapping")
     }, 1100)
   }
@@ -512,7 +691,7 @@ function CrmDialog({
       <DialogContent
         className={cn(
           "z-[60] data-ending-style:-translate-y-1/2 data-starting-style:-translate-y-1/2",
-          phase === "mapping" ? "max-w-3xl" : "max-w-md"
+          phase === "mapping" ? "max-w-4xl" : "max-w-md"
         )}
         overlayClassName="z-[60] backdrop-blur-md"
       >
@@ -530,15 +709,17 @@ function CrmDialog({
                     ? "Дані підключення"
                     : "Підключення CRM"}
           </DialogTitle>
-          <DialogDescription>
-            {phase === "mapping"
-              ? "Звʼяжіть статуси вашої CRM з категоріями нашої аналітики"
-              : phase === "choose"
+          {/* The mapping screen says what to do in its own banner, loud enough
+              that a grey line under the title would only repeat it. */}
+          {phase !== "mapping" && (
+            <DialogDescription>
+              {phase === "choose"
                 ? "Оберіть, що саме змінити"
                 : editing
                   ? "Змініть API ключ або адресу акаунту"
                   : "Оберіть CRM-систему та заповніть дані для підключення"}
-          </DialogDescription>
+            </DialogDescription>
+          )}
         </DialogHeader>
 
         {phase === "choose" && initial && (
@@ -849,9 +1030,11 @@ export function CrmStep({
         {hasCrms && (
           <div className="mt-3 flex flex-col gap-2">
             {connectedCrms.map((crm, i) => {
+              // A connection saved under an older set of categories can carry
+              // buckets we no longer show - they don't count as mapped.
               const mappedCount = crm.statusMapping
-                ? Object.values(crm.statusMapping).filter(
-                    (b) => b !== CRM_STATUS_IGNORE
+                ? Object.values(crm.statusMapping).filter((b) =>
+                    VALID_BUCKET_KEYS.has(b)
                   ).length
                 : 0
               return (

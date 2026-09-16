@@ -276,28 +276,47 @@ export type CrmStatusOption = { id: string; name: string }
 // exactly one of these (or "ignore"). Several CRM statuses can share a bucket -
 // e.g. a client often has many different "rejection" statuses.
 export type CrmStatusCategoryKey =
-  | "new"
+  | "processing"
+  | "declined"
   | "approved"
   | "completed"
   | "rejected"
-  | "returned"
-  | "shipped"
+  | "nonlead"
 
-// Three levels, and only three: an account's hundred-odd statuses all boil down
-// to "confirmed", "paid for" or "lost". `dot` colours the bucket marker, `tint`
-// paints the status itself once it lands here, and `hint` is the "which statuses
-// go here?" help next to the label.
+// The funnel, in order: a lead lands in processing, gets confirmed, gets paid
+// for - or falls out as a rejection or as junk that was never a lead. `short` is
+// what the mapping screen puts on chips and buttons, `dot` colours the bucket
+// marker, `tint` paints a status once it lands here, and `hint` is the "which
+// statuses go here?" help behind the label.
 export const CRM_STATUS_CATEGORIES: {
   key: CrmStatusCategoryKey
   label: string
+  short: string
   hint: string
   dot: string
   tint: string
   required?: boolean
 }[] = [
   {
+    key: "processing",
+    label: "Замовлення в обробці",
+    short: "В обробці",
+    hint: "Статуси, у яких лід ще в роботі колцентру: недозвони, перезвони, дожими, очікування товару. Рішення по замовленню ще немає.",
+    dot: "bg-sky-500",
+    tint: "border-sky-500/30 bg-sky-500/12 text-sky-700 dark:text-sky-400",
+  },
+  {
+    key: "declined",
+    label: "Відмова під час обробки",
+    short: "Відмова в обробці",
+    hint: "Статуси, у яких клієнт відмовився ще до підтвердження - на дзвінку, у переписці, через ціну чи відсутність товару. Замовлення не було, тому це б'є по апруву, а не по викупу.",
+    dot: "bg-orange-500",
+    tint: "border-orange-500/30 bg-orange-500/12 text-orange-700 dark:text-orange-400",
+  },
+  {
     key: "approved",
     label: "Підтверджені замовлення",
+    short: "Підтверджені",
     hint: "Статуси, у яких клієнт підтвердив замовлення і воно пішло в роботу - від апруву до пакування та відправки. З них рахується апрув.",
     dot: "bg-emerald-500",
     tint: "border-emerald-500/30 bg-emerald-500/12 text-emerald-700 dark:text-emerald-400",
@@ -306,6 +325,7 @@ export const CRM_STATUS_CATEGORIES: {
   {
     key: "completed",
     label: "Завершені замовлення",
+    short: "Завершені",
     hint: "Статуси, у яких клієнт забрав замовлення. Саме з них рахується дохід і ROI, тому не змішуйте їх з відправленими.",
     dot: "bg-lime-500",
     tint: "border-lime-500/30 bg-lime-500/15 text-lime-700 dark:text-lime-400",
@@ -314,15 +334,24 @@ export const CRM_STATUS_CATEGORIES: {
   {
     key: "rejected",
     label: "Відмови",
-    hint: "Статуси, у яких замовлення відмінилося: клієнт не забрав посилку, оформив повернення, посилка в дорозі назад і тд",
+    short: "Відмови",
+    hint: "Статуси, у яких відвалилося вже підтверджене замовлення: клієнт не забрав посилку, оформив повернення, посилка в дорозі назад і тд",
     dot: "bg-rose-500",
     tint: "border-rose-500/30 bg-rose-500/12 text-rose-700 dark:text-rose-400",
   },
+  {
+    key: "nonlead",
+    label: "Нелід",
+    short: "Нелід",
+    hint: "Заявки, яких насправді не було: дублі, спам, тести, помилкові номери, нецільові звернення. Вони не псують конверсію, бо не рахуються як ліди.",
+    dot: "bg-violet-500",
+    tint: "border-violet-500/30 bg-violet-500/12 text-violet-700 dark:text-violet-400",
+  },
 ]
 
-// Virtual bucket for statuses that shouldn't affect any analytics.
-export const CRM_STATUS_IGNORE = "ignore" as const
-export type CrmStatusBucket = CrmStatusCategoryKey | typeof CRM_STATUS_IGNORE
+// Every status belongs to one of the categories above - there is no "don't
+// count it" escape hatch, so nothing quietly falls out of the analytics.
+export type CrmStatusBucket = CrmStatusCategoryKey
 
 // crm status id -> bucket
 export type CrmStatusMapping = Record<string, CrmStatusBucket>
@@ -344,28 +373,39 @@ const AUTO_MATCH_RULES: {
   key: CrmStatusCategoryKey | null
   pattern: RegExp
 }[] = [
-  // Returns and swaps have no bucket of their own yet, so the user decides.
-  // Listed first so "Повернення (завершено)" isn't read as a completed order.
-  { key: null, pattern: /поверн|возврат|утиліз|дорозі додому|обмін/i },
-  // Paperwork steps say nothing about the order itself. Before the "approved"
-  // rule so "Друк ТТН" doesn't get pulled in by its ТТН keyword.
-  { key: null, pattern: /чек|друк|принт/i },
-  // Lost leads. Before the call-attempt rules so "Тотальний недозвон" isn't
-  // read as just another dial attempt.
+  // Junk first: a duplicate is junk even when its name also says "недозвон".
   {
-    key: "rejected",
+    key: "nonlead",
+    pattern: /нелид|нелід|дубл|спам|тест|помилков|неціль|нецелев/i,
+  },
+  // A return is a confirmed order coming back, so it's a rejection. Listed
+  // before "completed" so "Повернення (завершено)" isn't read as money earned.
+  { key: "rejected", pattern: /поверн|возврат|утиліз|дорозі додому/i },
+  // A swap can end either way - nobody guesses it for the user.
+  { key: null, pattern: /обмін/i },
+  // A "no" said on the call, before there was ever an order to lose.
+  {
+    key: "declined",
     pattern:
-      /відмов|скасов|відхил|отказ|нелид|нелід|дубл|тотальн|нет товара|немає товару|поганий рейтинг|cancel|reject|decline/i,
+      /відмов|скасов|відхил|отказ|тотальн|нет товара|немає товару|поганий рейтинг|cancel|reject|decline/i,
   },
   {
     key: "completed",
-    pattern: /заверш|виплач|викуп|выкуп|отримано|оплач|complete|done|paid/i,
+    pattern:
+      /заверш|виплач|викуп|выкуп|отримано|оплач|забра|збр|complete|done|paid/i,
   },
-  // Confirmed, plus everything already moving through fulfilment.
+  // Confirmed, plus everything already moving through fulfilment: paperwork,
+  // packing, the carriers and the days a parcel waits at the branch.
   {
     key: "approved",
     pattern:
-      /апрув|прийня|підтвер|approve|confirm|упаковк|запаков|ттн|по[шч]т|відправлен|отправлен|передано|самовив/i,
+      /апрув|прийня|підтвер|approve|confirm|упаковк|запаков|ттн|чек|друк|принт|по[шч]т|отд|відправлен|отправлен|передано|самовив|предоплат|передоплат|(^|[^а-яёіїєґa-z])(уп|нп)([^а-яёіїєґa-z]|$)/i,
+  },
+  // Everything the call centre is still working through.
+  {
+    key: "processing",
+    pattern:
+      /недозвон|нзв|перезвон|прозвон|дожим|дозвон|вайбер|viber|смс|sms|нов|очікуван|ожидан|китай|ночь|переадрес|уточнен|оформлен|пізніше|позже|товару|сегодня|по дате/i,
   },
 ]
 
