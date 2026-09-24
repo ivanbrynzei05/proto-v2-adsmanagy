@@ -1,8 +1,10 @@
 import {
+  IconBolt,
   IconChartBar,
   IconChartPie,
   IconHelpCircle,
   IconLayoutDashboard,
+  IconMessageCircle,
   IconSettings,
   IconTable,
 } from "@tabler/icons-react"
@@ -22,6 +24,8 @@ import {
 const NAV = [
   { path: "/", label: "Дашборд", icon: IconLayoutDashboard },
   { path: "/campaigns", label: "Кампанії", icon: IconTable },
+  { path: "/rules", label: "Автоправила", icon: IconBolt },
+  { path: "/comments", label: "Коментарі", icon: IconMessageCircle },
   { path: "/statistics", label: "Статистика", icon: IconChartBar },
   { path: "/settings", label: "Налаштування", icon: IconSettings },
 ] as const

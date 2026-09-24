@@ -1,5 +1,6 @@
 import {
   IconAd,
+  IconAdjustmentsHorizontal,
   IconCoins,
   IconCreditCard,
   IconDatabase,
@@ -21,6 +22,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
+import { AdvancedSection } from "@/features/advanced/advanced-section"
 import { BalanceSection } from "@/features/billing/balance-section"
 import { CurrencyControls } from "@/features/currency/currency-controls"
 import { ExpensesSection } from "@/features/expenses/expenses-section"
@@ -36,6 +38,7 @@ type SectionId =
   | "team"
   | "sources"
   | "expenses"
+  | "advanced"
   | "billing"
   | "plans"
 
@@ -48,6 +51,7 @@ const SECTIONS: {
   { id: "sources", label: "Інтеграції", icon: IconPlugConnected },
   { id: "expenses", label: "Витрати", icon: IconCoins },
   { id: "team", label: "Команда", icon: IconUsers },
+  { id: "advanced", label: "Розширені", icon: IconAdjustmentsHorizontal },
   { id: "plans", label: "Підписка", icon: IconCreditCard },
   { id: "billing", label: "Баланс", icon: IconWallet },
 ]
@@ -63,6 +67,7 @@ function sectionFromParam(value: string | null): SectionId {
     value === "general" ||
     value === "team" ||
     value === "expenses" ||
+    value === "advanced" ||
     value === "billing" ||
     value === "plans"
   ) {
@@ -323,6 +328,7 @@ export function SettingsPage() {
           {active === "team" && <TeamSection />}
           {active === "sources" && <SourcesSection />}
           {active === "expenses" && <ExpensesSection />}
+          {active === "advanced" && <AdvancedSection />}
           {active === "plans" && <SubscriptionManager />}
           {active === "billing" && <BalanceSection />}
         </div>

@@ -2,21 +2,25 @@ import { Navigate, Outlet, Route, Routes } from "react-router-dom"
 
 import { AppSidebar } from "@/components/layout/app-sidebar"
 import { SiteHeader } from "@/components/layout/site-header"
+import { CommentsProvider } from "@/components/comments-provider"
 import { CurrencyProvider } from "@/components/currency-provider"
 import { DataSourcesProvider } from "@/components/data-sources-provider"
 import { ExpensesProvider } from "@/components/expenses-provider"
 import { IntegrationsProvider } from "@/components/integrations-provider"
+import { RulesProvider } from "@/components/rules-provider"
 import { TeamProvider } from "@/components/team-provider"
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { SubscriptionProvider } from "@/features/billing/subscription-context"
 import { PasswordPage } from "@/pages/auth/password"
 import { CampaignsPage } from "@/pages/campaigns/campaigns"
+import { CommentsPage } from "@/pages/comments/comments"
 import { ConnectAdsPage } from "@/pages/connect/connect-ads"
 import { DashboardPage } from "@/pages/dashboard/dashboard"
 import { FaqPage } from "@/pages/help/faq"
 import { PrivacyPolicyPage } from "@/pages/legal/privacy"
 import { OnboardingPage } from "@/pages/onboarding/onboarding"
+import { RulesPage } from "@/pages/rules/rules"
 import { SettingsPage } from "@/pages/settings/settings"
 import { StatisticsPage } from "@/pages/statistics/statistics"
 
@@ -41,26 +45,44 @@ export function App() {
             <CurrencyProvider>
               <SubscriptionProvider>
                 <TeamProvider>
-                  <Routes>
-                    <Route element={<AppLayout />}>
-                      <Route path="/" element={<DashboardPage />} />
-                      <Route path="/campaigns" element={<CampaignsPage />} />
-                      <Route path="/statistics" element={<StatisticsPage />} />
-                      <Route path="/settings" element={<SettingsPage />} />
-                      <Route path="/help/faq" element={<FaqPage />} />
-                      <Route
-                        path="/legal/privacy"
-                        element={<PrivacyPolicyPage />}
-                      />
-                    </Route>
-                    <Route path="/auth/password" element={<PasswordPage />} />
-                    <Route path="/onboarding" element={<OnboardingPage />} />
-                    <Route
-                      path="/connect/ads/:token"
-                      element={<ConnectAdsPage />}
-                    />
-                    <Route path="*" element={<Navigate to="/" replace />} />
-                  </Routes>
+                  <RulesProvider>
+                    <CommentsProvider>
+                      <Routes>
+                        <Route element={<AppLayout />}>
+                          <Route path="/" element={<DashboardPage />} />
+                          <Route
+                            path="/campaigns"
+                            element={<CampaignsPage />}
+                          />
+                          <Route path="/rules" element={<RulesPage />} />
+                          <Route path="/comments" element={<CommentsPage />} />
+                          <Route
+                            path="/statistics"
+                            element={<StatisticsPage />}
+                          />
+                          <Route path="/settings" element={<SettingsPage />} />
+                          <Route path="/help/faq" element={<FaqPage />} />
+                          <Route
+                            path="/legal/privacy"
+                            element={<PrivacyPolicyPage />}
+                          />
+                        </Route>
+                        <Route
+                          path="/auth/password"
+                          element={<PasswordPage />}
+                        />
+                        <Route
+                          path="/onboarding"
+                          element={<OnboardingPage />}
+                        />
+                        <Route
+                          path="/connect/ads/:token"
+                          element={<ConnectAdsPage />}
+                        />
+                        <Route path="*" element={<Navigate to="/" replace />} />
+                      </Routes>
+                    </CommentsProvider>
+                  </RulesProvider>
                 </TeamProvider>
               </SubscriptionProvider>
             </CurrencyProvider>

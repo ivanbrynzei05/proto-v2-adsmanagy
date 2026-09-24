@@ -99,21 +99,24 @@ function Section({
 // table carries instead of hiding inside the grey line - and the chips line up
 // in one column, which is how the list is scanned. Selecting turns the disc into
 // a check, so the picked state never crowds the chip.
-function ProductFace({
+export function ProductFace({
   id,
   name,
   picked,
   isNew = false,
+  fromCrm,
 }: {
   id: string
   name: string
   picked: boolean
   /** an id typed into the search box that the catalogue doesn't know */
   isNew?: boolean
+  /** overrides the catalogue lookup for positions this file doesn't list */
+  fromCrm?: boolean
 }) {
   // only what the catalogue answered with can claim to come from the CRM - an id
   // attached by hand is exactly the case where it hasn't reached it yet
-  const fromCatalogue = PRODUCTS[id] !== undefined
+  const fromCatalogue = fromCrm ?? PRODUCTS[id] !== undefined
   return (
     <>
       <span
@@ -252,7 +255,7 @@ const DEBOUNCE_MS = 260
 // than as a bar chart.
 const SKELETON_WIDTHS = ["w-2/5", "w-3/5", "w-1/2", "w-2/3", "w-1/3"]
 
-function PendingRows() {
+export function PendingRows() {
   return (
     <>
       {SKELETON_WIDTHS.map((w, i) => (
@@ -280,7 +283,7 @@ function PendingRows() {
 // answer is what reveals how many pages exist, and a control appearing after it
 // lands would resize a popup that is centred on the screen - i.e. shift
 // everything above it too. The row is always there; only its contents arrive.
-function Pager({
+export function Pager({
   page,
   pageCount,
   busy,

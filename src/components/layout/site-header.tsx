@@ -1,7 +1,6 @@
 import {
   IconAlertTriangle,
   IconArrowRight,
-  IconBell,
   IconCalendarEvent,
   IconChevronDown,
   IconCircleCheckFilled,
@@ -28,6 +27,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { useSubscription } from "@/features/billing/subscription-context"
+import { NotificationsMenu } from "@/features/notifications/notifications-menu"
 import { formatPlanDate } from "@/features/billing/checkout-sheet"
 import { PLAN_FEATURES } from "@/features/billing/plans"
 import {
@@ -140,7 +140,11 @@ function UsageBar({ row }: { row: UsageRow }) {
       ? Math.round((row.used / row.limit) * 100)
       : 0
   const tone =
-    pct >= 100 ? "bg-destructive" : pct >= 80 ? "bg-amber-500" : "bg-emerald-500"
+    pct >= 100
+      ? "bg-destructive"
+      : pct >= 80
+        ? "bg-amber-500"
+        : "bg-emerald-500"
 
   return (
     <div className={cn(row.locked && "opacity-50")}>
@@ -149,7 +153,7 @@ function UsageBar({ row }: { row: UsageRow }) {
           <row.icon className="size-3.5 text-muted-foreground" />
           {row.label}
         </span>
-        <span className="tabular-nums text-muted-foreground">
+        <span className="text-muted-foreground tabular-nums">
           {row.locked ? (
             <span className="flex items-center gap-1">
               <IconLock className="size-3" />
@@ -329,7 +333,7 @@ function BillingStatus() {
                   </Badge>
                 </div>
                 {d.meta && (
-                  <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+                  <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
                     {d.meta}
                   </span>
                 )}
@@ -395,9 +399,7 @@ export function SiteHeader() {
           {isDark ? <IconSun /> : <IconMoon />}
         </Button>
 
-        <Button variant="secondary" size="icon" aria-label="Сповіщення">
-          <IconBell />
-        </Button>
+        <NotificationsMenu />
 
         <DropdownMenu>
           <DropdownMenuTrigger

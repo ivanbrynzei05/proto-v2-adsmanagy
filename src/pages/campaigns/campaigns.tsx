@@ -3,6 +3,7 @@ import {
   IconArrowsSort,
   IconArrowsSplit2,
   IconArrowUpRight,
+  IconBolt,
   IconBox,
   IconChevronDown,
   IconChevronRight,
@@ -29,9 +30,11 @@ import {
   type Icon as TablerIcon,
 } from "@tabler/icons-react"
 import { Fragment, useEffect, useMemo, useRef, useState } from "react"
+import { useNavigate } from "react-router-dom"
 
 import { useCurrency } from "@/components/currency-provider"
 import { useDataSources } from "@/components/data-sources-provider"
+import { useRules } from "@/components/rules-provider"
 import { useTeam } from "@/components/team-provider"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -68,6 +71,8 @@ import {
 } from "@/components/ui/tooltip"
 import { PricingDialog } from "@/features/billing/pricing-dialog"
 import type { DisplayCurrency } from "@/features/currency/types"
+import { RuleDialog, type RuleSeed } from "@/features/rules/rule-dialog"
+import { blankRule, type RuleLevel } from "@/features/rules/types"
 import type { TeamMember } from "@/features/team/types"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { cn } from "@/lib/utils"
@@ -228,6 +233,12 @@ const ENTITY_SHORT: Record<string, string> = {
   Кампанії: "Кампанії",
   "Групи оголошень": "Групи",
   Оголошення: "Оголошення",
+}
+// the level an automated rule made from this tab acts on
+const ENTITY_LEVEL: Record<string, RuleLevel> = {
+  Кампанії: "campaign",
+  "Групи оголошень": "adset",
+  Оголошення: "ad",
 }
 // Synthetic per-level identifier shown under the name: a campaign id on the
 // campaign level, an ad-group id on groups, an ad id on ads. Ad-platform ids are
@@ -848,6 +859,12 @@ export function CampaignsPage() {
   // the row whose product is being edited - kept while the dialog animates out
   const [pickerTarget, setPickerTarget] = useState<ProductTarget | null>(null)
   const [pickerOpen, setPickerOpen] = useState(false)
+  // automated rules - Ads Manager keeps its Rules menu in the table toolbar,
+  // and a rule made there starts on the rows picked in the table
+  const navigate = useNavigate()
+  const { rules, saveRule } = useRules()
+  const [ruleSeed, setRuleSeed] = useState<RuleSeed | null>(null)
+  const [ruleOpen, setRuleOpen] = useState(false)
 
   // loading skeletons: a full-page one on first load, and a short table pulse
   // whenever the breakdown / entity changes so the switch feels "live"
@@ -1185,6 +1202,25 @@ export function CampaignsPage() {
   }
 
   const selCount = sel.size
+  // the picked rows as indices into the level's dataset - a breakdown sub-row
+  // carries row._i * 100 + n, so it folds back onto its row
+  const ruleTargets = Array.from(
+    new Set(
+      Array.from(sel, (i) =>
+        BREAKDOWN_VALUES[breakdown] ? Math.floor(i / 100) : i
+      )
+    )
+  )
+  function createRule() {
+    setRuleSeed({
+      rule: {
+        ...blankRule(ENTITY_LEVEL[entity] ?? "campaign"),
+        targets: ruleTargets.length > 0 ? ruleTargets : null,
+      },
+      isNew: true,
+    })
+    setRuleOpen(true)
+  }
   // The one filter's own tree, rebuilt as the ticks above a cabinet change: a
   // cabinet the picked platforms rule out is still shown, but greyed.
   const adNodes = useMemo(
@@ -2091,6 +2127,35 @@ export function CampaignsPage() {
               />
             </div>
 
+            {/* automated rules for this level - for the picked rows when there
+                are any */}
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={
+                  <Button variant="outline" size="sm">
+                    <IconBolt />
+                    Правила
+                    <IconChevronDown className="text-muted-foreground" />
+                  </Button>
+                }
+              />
+              <DropdownMenuContent align="end" className="w-60">
+                <DropdownMenuItem onClick={createRule}>
+                  <IconPlus />
+                  {ruleTargets.length > 0
+                    ? `Правило для обраних (${ruleTargets.length})`
+                    : "Створити правило"}
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => navigate("/rules")}>
+                  <IconBolt />
+                  Усі правила
+                  <span className="ml-auto text-xs text-muted-foreground tabular-nums">
+                    {rules.length}
+                  </span>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+
             {/* columns dropdown */}
             <DropdownMenu>
               <DropdownMenuTrigger
@@ -2473,6 +2538,13 @@ export function CampaignsPage() {
         target={pickerTarget}
         onOpenChange={setPickerOpen}
         onSave={saveProductLink}
+      />
+
+      <RuleDialog
+        open={ruleOpen}
+        onOpenChange={setRuleOpen}
+        seed={ruleSeed}
+        onSave={saveRule}
       />
 
       <PricingDialog open={pricingOpen} onOpenChange={setPricingOpen} />
