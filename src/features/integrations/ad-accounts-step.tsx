@@ -1,5 +1,6 @@
 import {
   IconCheck,
+  IconChevronDown,
   IconCopy,
   IconLock,
   IconPencil,
@@ -20,12 +21,14 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
+import { Pagination } from "@/components/ui/pagination"
 import { Switch } from "@/components/ui/switch"
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
+import { pageOf } from "@/lib/paging"
 import { cn } from "@/lib/utils"
 import {
   AD_PLATFORMS,
@@ -141,6 +144,13 @@ function ConnectedBy({ name }: { name?: string }) {
   )
 }
 
+// A team's worth of logins under one platform runs long, so the platform shows
+// them a page at a time.
+const ACCOUNTS_PAGE = 10
+
+// Positions, per platform, of the accounts whose cabinets are unfolded.
+type OpenAccounts = Partial<Record<AdPlatform["name"], number[]>>
+
 export function AdAccountsStep({
   connectedAccounts,
   setConnectedAccounts,
@@ -169,6 +179,24 @@ export function AdAccountsStep({
     value: string
     original: string
   } | null>(null)
+  // Every account starts folded to its header - a login can hold dozens of
+  // cabinets, and a list of them all is what made the page run on. An account
+  // has no id of its own, so the fold is kept by its place in the list.
+  const [openAccounts, setOpenAccounts] = useState<OpenAccounts>({})
+  const [pages, setPages] = useState<
+    Partial<Record<AdPlatform["name"], number>>
+  >({})
+
+  const toggleAccount = (platform: AdPlatform, index: number) =>
+    setOpenAccounts((prev) => {
+      const open = prev[platform.name] ?? []
+      return {
+        ...prev,
+        [platform.name]: open.includes(index)
+          ? open.filter((i) => i !== index)
+          : [...open, index],
+      }
+    })
 
   const openRename = (
     platform: AdPlatform,
@@ -261,6 +289,8 @@ export function AdAccountsStep({
     <div className="flex flex-col gap-3">
       {groups.map(({ platform, accounts }, groupIndex) => {
         const cabinets = countCabinets({ [platform.name]: accounts })
+        const paged = pageOf(accounts, pages[platform.name] ?? 0, ACCOUNTS_PAGE)
+        const open = openAccounts[platform.name] ?? []
         return (
           <div
             key={platform.name}
@@ -301,63 +331,103 @@ export function AdAccountsStep({
                   Акаунти не підключені
                 </div>
               )}
-              {accounts.map((account, index) => {
+              {paged.items.map((account, pageIndex) => {
+                // the account's place in the whole list, not on this page
+                const index = paged.page * ACCOUNTS_PAGE + pageIndex
                 const accountEnabled = account.enabled !== false
+                const isOpen = open.includes(index)
+                const lockedCount = account.cabinets.filter(
+                  (c) => c.lockReason
+                ).length
                 return (
                   <div
                     key={`${platform.name}-${index}`}
-                    className="rounded-lg border p-3.5"
+                    className="overflow-hidden rounded-lg border"
                   >
-                    <div className="flex items-center justify-between gap-3 border-b pb-3">
-                      <div className="flex min-w-0 items-center gap-3">
-                        <div className="min-w-0">
-                          <div className="flex min-w-0 items-center gap-1">
-                            <p className="truncate text-sm font-semibold">
-                              {account.label ?? account.owner}
-                            </p>
-                            <Button
-                              variant="ghost"
-                              size="icon-xs"
-                              className="shrink-0 text-muted-foreground"
-                              aria-label="Перейменувати акаунт"
-                              onClick={() =>
-                                openRename(
-                                  platform,
-                                  index,
-                                  null,
-                                  account.owner,
-                                  account.label ?? account.owner
-                                )
+                    {/* the whole header opens the account, not only its
+                        button; the controls on it keep their clicks to
+                        themselves */}
+                    <div
+                      onClick={() => toggleAccount(platform, index)}
+                      className="flex cursor-pointer flex-wrap items-center gap-x-3 gap-y-2 p-3.5 transition-colors hover:bg-muted/40"
+                    >
+                      {/* the name keeps at least this much room - on a phone
+                          the controls drop to a line of their own instead of
+                          squeezing it away */}
+                      <div className="min-w-0 flex-1 basis-40">
+                        <div className="flex min-w-0 items-center gap-1">
+                          <p className="truncate text-sm font-semibold">
+                            {account.label ?? account.owner}
+                          </p>
+                          <Button
+                            variant="ghost"
+                            size="icon-xs"
+                            className="shrink-0 text-muted-foreground"
+                            aria-label="Перейменувати акаунт"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              openRename(
+                                platform,
+                                index,
+                                null,
+                                account.owner,
+                                account.label ?? account.owner
+                              )
+                            }}
+                          >
+                            <IconPencil />
+                          </Button>
+                        </div>
+                        {(account.label || account.connectedBy) && (
+                          <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+                            {account.label && (
+                              <span className="truncate">{account.owner}</span>
+                            )}
+                            {account.label && account.connectedBy && (
+                              <span className="text-muted-foreground/50">
+                                ·
+                              </span>
+                            )}
+                            <ConnectedBy name={account.connectedBy} />
+                          </div>
+                        )}
+                      </div>
+                      <div
+                        className="ml-auto flex shrink-0 items-center gap-2"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {/* a folded account would hide a cabinet the platform
+                            shut off, so the header keeps count of them */}
+                        {lockedCount > 0 && (
+                          <Tooltip>
+                            <TooltipTrigger
+                              render={
+                                <span className="flex cursor-default items-center gap-1 text-xs text-muted-foreground tabular-nums" />
                               }
                             >
-                              <IconPencil />
-                            </Button>
-                          </div>
-                          {(account.label || account.connectedBy) && (
-                            <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
-                              {account.label && (
-                                <span className="truncate">
-                                  {account.owner}
-                                </span>
-                              )}
-                              {account.label && account.connectedBy && (
-                                <span className="text-muted-foreground/50">
-                                  ·
-                                </span>
-                              )}
-                              <ConnectedBy name={account.connectedBy} />
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                      <div className="flex shrink-0 items-center gap-2">
-                        <Badge
+                              <IconLock className="size-3.5" />
+                              {lockedCount}
+                            </TooltipTrigger>
+                            <TooltipContent>Недоступні кабінети</TooltipContent>
+                          </Tooltip>
+                        )}
+                        {/* the fold's own button: a real button with the count
+                            on it, so it reads as "open these" at a glance */}
+                        <Button
                           variant="outline"
-                          className="border-transparent bg-emerald-500/12 text-emerald-600 dark:text-emerald-400"
+                          size="sm"
+                          aria-expanded={isOpen}
+                          onClick={() => toggleAccount(platform, index)}
                         >
                           {account.cabinets.length}{" "}
                           {pluralizeKabinet(account.cabinets.length)}
-                        </Badge>
+                          <IconChevronDown
+                            className={cn(
+                              "transition-transform",
+                              isOpen && "rotate-180"
+                            )}
+                          />
+                        </Button>
                         <Button
                           variant="ghost"
                           size="icon-sm"
@@ -378,105 +448,129 @@ export function AdAccountsStep({
                         />
                       </div>
                     </div>
-                    {/* an account that's off takes its cabinets out of the
-                        analytics with it, so they all read as greyed */}
+                    {/* a 0fr -> 1fr grid row is what makes the fold animate: the
+                        row has a real height to travel to without anyone
+                        measuring the cabinets */}
                     <div
+                      inert={!isOpen}
                       className={cn(
-                        "mt-3 flex flex-col gap-2 transition-opacity",
-                        !accountEnabled && "opacity-45"
+                        "grid transition-[grid-template-rows,opacity] duration-200 ease-out motion-reduce:transition-none",
+                        isOpen
+                          ? "grid-rows-[1fr] opacity-100"
+                          : "grid-rows-[0fr] opacity-0"
                       )}
                     >
-                      {account.cabinets.map((cabinet, cabinetIndex) => {
-                        // a locked cabinet is not "off" - the platform won't
-                        // give us its numbers at all, so the switch is dead
-                        // rather than waiting to be flipped back
-                        const locked = Boolean(cabinet.lockReason)
-                        const enabled = !locked && cabinet.enabled !== false
-                        return (
-                          <div
-                            key={cabinet.cabinetId}
-                            className="flex items-center justify-between gap-3 rounded-lg bg-muted p-3"
-                          >
-                            <div
-                              className={cn(
-                                "min-w-0 transition-opacity",
-                                !enabled && "opacity-50"
-                              )}
-                            >
-                              <div className="flex min-w-0 items-center gap-1">
-                                <p className="truncate text-sm font-semibold">
-                                  {cabinet.label ?? cabinet.name}
-                                </p>
-                                {!locked && (
-                                  <Button
-                                    variant="ghost"
-                                    size="icon-xs"
-                                    className="shrink-0 text-muted-foreground"
-                                    aria-label="Перейменувати кабінет"
-                                    onClick={() =>
-                                      openRename(
-                                        platform,
-                                        index,
-                                        cabinetIndex,
-                                        cabinet.name,
-                                        cabinet.label ?? cabinet.name
-                                      )
-                                    }
-                                  >
-                                    <IconPencil />
-                                  </Button>
-                                )}
-                              </div>
-                              {locked ? (
-                                <p className="truncate text-xs text-muted-foreground">
-                                  {cabinet.lockReason}
-                                </p>
-                              ) : (
-                                cabinet.label && (
-                                  <p className="truncate text-xs text-muted-foreground">
-                                    {cabinet.name}
-                                  </p>
-                                )
-                              )}
-                            </div>
-                            <div className="flex shrink-0 items-center gap-2">
-                              {locked ? (
-                                <Tooltip>
-                                  <TooltipTrigger
-                                    render={
-                                      <span className="flex size-8 cursor-default items-center justify-center text-muted-foreground" />
-                                    }
-                                  >
-                                    <IconLock className="size-4" />
-                                  </TooltipTrigger>
-                                  <TooltipContent>
-                                    Кабінет недоступний - увімкнути його не
-                                    можна
-                                  </TooltipContent>
-                                </Tooltip>
-                              ) : (
-                                <Switch
-                                  checked={enabled}
-                                  onCheckedChange={(next) =>
-                                    setCabinetEnabled(
-                                      platform,
-                                      index,
-                                      cabinetIndex,
-                                      next
+                      <div className="overflow-hidden">
+                        {/* an account that's off takes its cabinets out of
+                            the analytics with it, so they all read as greyed */}
+                        <div
+                          className={cn(
+                            "mx-3.5 mb-3.5 flex flex-col gap-2 border-t pt-3 transition-opacity",
+                            !accountEnabled && "opacity-45"
+                          )}
+                        >
+                          {account.cabinets.map((cabinet, cabinetIndex) => {
+                            // a locked cabinet is not "off" - the platform won't
+                            // give us its numbers at all, so the switch is dead
+                            // rather than waiting to be flipped back
+                            const locked = Boolean(cabinet.lockReason)
+                            const enabled = !locked && cabinet.enabled !== false
+                            return (
+                              <div
+                                key={cabinet.cabinetId}
+                                className="flex items-center justify-between gap-3 rounded-lg bg-muted p-3"
+                              >
+                                <div
+                                  className={cn(
+                                    "min-w-0 transition-opacity",
+                                    !enabled && "opacity-50"
+                                  )}
+                                >
+                                  <div className="flex min-w-0 items-center gap-1">
+                                    <p className="truncate text-sm font-semibold">
+                                      {cabinet.label ?? cabinet.name}
+                                    </p>
+                                    {!locked && (
+                                      <Button
+                                        variant="ghost"
+                                        size="icon-xs"
+                                        className="shrink-0 text-muted-foreground"
+                                        aria-label="Перейменувати кабінет"
+                                        onClick={() =>
+                                          openRename(
+                                            platform,
+                                            index,
+                                            cabinetIndex,
+                                            cabinet.name,
+                                            cabinet.label ?? cabinet.name
+                                          )
+                                        }
+                                      >
+                                        <IconPencil />
+                                      </Button>
+                                    )}
+                                  </div>
+                                  {locked ? (
+                                    <p className="truncate text-xs text-muted-foreground">
+                                      {cabinet.lockReason}
+                                    </p>
+                                  ) : (
+                                    cabinet.label && (
+                                      <p className="truncate text-xs text-muted-foreground">
+                                        {cabinet.name}
+                                      </p>
                                     )
-                                  }
-                                  aria-label={`Кабінет ${cabinet.label ?? cabinet.name}`}
-                                />
-                              )}
-                            </div>
-                          </div>
-                        )
-                      })}
+                                  )}
+                                </div>
+                                <div className="flex shrink-0 items-center gap-2">
+                                  {locked ? (
+                                    <Tooltip>
+                                      <TooltipTrigger
+                                        render={
+                                          <span className="flex size-8 cursor-default items-center justify-center text-muted-foreground" />
+                                        }
+                                      >
+                                        <IconLock className="size-4" />
+                                      </TooltipTrigger>
+                                      <TooltipContent>
+                                        Кабінет недоступний - увімкнути його не
+                                        можна
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  ) : (
+                                    <Switch
+                                      checked={enabled}
+                                      onCheckedChange={(next) =>
+                                        setCabinetEnabled(
+                                          platform,
+                                          index,
+                                          cabinetIndex,
+                                          next
+                                        )
+                                      }
+                                      aria-label={`Кабінет ${cabinet.label ?? cabinet.name}`}
+                                    />
+                                  )}
+                                </div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
                     </div>
                   </div>
                 )
               })}
             </div>
+            <Pagination
+              page={paged.page}
+              pageCount={paged.pageCount}
+              size={ACCOUNTS_PAGE}
+              total={accounts.length}
+              onPage={(page) =>
+                setPages((prev) => ({ ...prev, [platform.name]: page }))
+              }
+            />
           </div>
         )
       })}
@@ -485,6 +579,16 @@ export function AdAccountsStep({
         onOpenChange={setConnectOpen}
         platform={connectPlatform}
         onConnect={(platform) => {
+          // what just arrived opens, on the page it landed on
+          const index = connectedAccounts[platform.name]?.length ?? 0
+          setOpenAccounts((prev) => ({
+            ...prev,
+            [platform.name]: [...(prev[platform.name] ?? []), index],
+          }))
+          setPages((prev) => ({
+            ...prev,
+            [platform.name]: Math.floor(index / ACCOUNTS_PAGE),
+          }))
           setConnectedAccounts((prev) => {
             const existing = prev[platform.name] ?? []
             const pool = MOCK_AD_ACCOUNTS[platform.name]
@@ -578,6 +682,15 @@ export function AdAccountsStep({
                   }
                   return updated
                 })
+                // the accounts below move up a place, and their folds go
+                // with them
+                const { platform, index } = accountToDelete
+                setOpenAccounts((prev) => ({
+                  ...prev,
+                  [platform.name]: (prev[platform.name] ?? [])
+                    .filter((i) => i !== index)
+                    .map((i) => (i > index ? i - 1 : i)),
+                }))
                 setAccountToDelete(null)
               }}
             >

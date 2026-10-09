@@ -8,6 +8,7 @@ import {
   type CallCenter,
   type ConnectedAdAccounts,
   type ConnectedCrm,
+  type TelegramChat,
 } from "@/features/integrations/types"
 
 type IntegrationsContextValue = {
@@ -19,6 +20,8 @@ type IntegrationsContextValue = {
   setConnectedCrms: React.Dispatch<React.SetStateAction<ConnectedCrm[]>>
   callCenters: CallCenter[]
   setCallCenters: React.Dispatch<React.SetStateAction<CallCenter[]>>
+  telegramChats: TelegramChat[]
+  setTelegramChats: React.Dispatch<React.SetStateAction<TelegramChat[]>>
 }
 
 const STORAGE_KEY = "integrations"
@@ -27,12 +30,14 @@ type StoredState = {
   connectedAccounts: ConnectedAdAccounts
   connectedCrms: ConnectedCrm[]
   callCenters: CallCenter[]
+  telegramChats: TelegramChat[]
 }
 
 const DEFAULT_STATE: StoredState = {
   connectedAccounts: {},
   connectedCrms: [],
   callCenters: [],
+  telegramChats: [],
 }
 
 const IntegrationsContext = React.createContext<
@@ -162,11 +167,19 @@ export function IntegrationsProvider({
   const [callCenters, setCallCenters] = React.useState<CallCenter[]>(
     () => readStoredState().callCenters
   )
+  const [telegramChats, setTelegramChats] = React.useState<TelegramChat[]>(
+    () => readStoredState().telegramChats
+  )
 
   React.useEffect(() => {
-    const state: StoredState = { connectedAccounts, connectedCrms, callCenters }
+    const state: StoredState = {
+      connectedAccounts,
+      connectedCrms,
+      callCenters,
+      telegramChats,
+    }
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
-  }, [connectedAccounts, connectedCrms, callCenters])
+  }, [connectedAccounts, connectedCrms, callCenters, telegramChats])
 
   const value = React.useMemo(
     () => ({
@@ -176,8 +189,10 @@ export function IntegrationsProvider({
       setConnectedCrms,
       callCenters,
       setCallCenters,
+      telegramChats,
+      setTelegramChats,
     }),
-    [connectedAccounts, connectedCrms, callCenters]
+    [connectedAccounts, connectedCrms, callCenters, telegramChats]
   )
 
   return (

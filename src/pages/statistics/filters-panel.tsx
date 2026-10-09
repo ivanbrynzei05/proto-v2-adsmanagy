@@ -15,15 +15,15 @@ import { type TeamMember } from "@/features/team/types"
 import { cn } from "@/lib/utils"
 import { DateRangePicker } from "@/pages/campaigns/date-range"
 import type { DateRange } from "@/pages/campaigns/date-utils"
-import { countFilters, matchingAccounts, type ReportFilters } from "./data"
-import { useDraftFilters } from "./draft-filters"
+import { AdsPicker } from "./ads-picker"
 import {
-  adsTree,
-  flatTree,
-  productsTree,
-  teamTree,
-  TreePicker,
-} from "./filter-tree"
+  countFilters,
+  EMPTY_FILTERS,
+  matchingAccounts,
+  type ReportFilters,
+} from "./data"
+import { useDraftFilters } from "./draft-filters"
+import { flatTree, productsTree, teamTree, TreePicker } from "./filter-tree"
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
   return (
@@ -132,8 +132,13 @@ export function FilterGroups({
   crmOptions,
   centerOptions,
   members,
+  onApply,
   className,
-}: FilterGroupsProps & { className?: string }) {
+}: FilterGroupsProps & {
+  /** the panel's Застосувати, for the Реклама picker to press from inside */
+  onApply?: () => void
+  className?: string
+}) {
   // Every tree is built once and then held: the catalogue alone is a couple of
   // thousand nodes, and rebuilding it on each tick would both cost that and
   // reshuffle the pickers' pages under whoever is ticking.
@@ -144,15 +149,15 @@ export function FilterGroups({
     [centerOptions]
   )
   const crms = useMemo(() => flatTree(crmOptions, "crms"), [crmOptions])
-  // the exception, and it has to be: a cabinet that the platforms above it - or
-  // the people the report is read for - rule out is shown, but greyed, so this
-  // one is rebuilt as the ticks that grey it change
-  const ads = useMemo(
+  // a cabinet that the people the report is read for do not run is shown in
+  // the Реклама picker, but greyed
+  const reachable = useMemo(
     () =>
-      adsTree(
-        matchingAccounts({ ...filters, accounts: [] }, members).map((a) => a.id)
-      ),
-    [filters, members]
+      matchingAccounts(
+        { ...EMPTY_FILTERS, members: filters.members },
+        members
+      ).map((a) => a.id),
+    [filters.members, members]
   )
 
   return (
@@ -183,28 +188,18 @@ export function FilterGroups({
       <FilterGroup
         title="Реклама"
         icon={IconSpeakerphone}
-        count={
-          filters.platforms.length +
-          filters.portfolios.length +
-          filters.accounts.length
-        }
-        onClear={() =>
-          onFilters({
-            ...filters,
-            platforms: [],
-            portfolios: [],
-            accounts: [],
-          })
-        }
+        count={filters.accounts.length}
+        onClear={() => onFilters({ ...filters, accounts: [] })}
       >
-        {/* Three tiers in one picker, which is how the API sends them: the
-              platform holds its business accounts, and those hold the cabinets
-              the report is actually cut by. */}
-        <TreePicker
+        {/* Платформа › акаунт › кабінет, which is how the API sends them - too
+              many of them on a team to read as one tree, so the picker lists
+              one platform's accounts at a time, with a search over them. */}
+        <AdsPicker
           label="Джерела"
-          nodes={ads}
-          filters={filters}
-          onFilters={onFilters}
+          value={filters.accounts}
+          onChange={(accounts) => onFilters({ ...filters, accounts })}
+          reachable={reachable}
+          onApply={onApply}
         />
       </FilterGroup>
 
@@ -329,6 +324,9 @@ export function FiltersPanel({
         {...groups}
         filters={draft}
         onFilters={setDraft}
+        onApply={() => {
+          if (dirty) apply()
+        }}
         className="px-4"
       />
 

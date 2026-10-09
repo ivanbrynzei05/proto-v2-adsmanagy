@@ -1,7 +1,5 @@
 import {
-  IconAlertTriangle,
   IconArrowsSort,
-  IconArrowsSplit2,
   IconArrowUpRight,
   IconBolt,
   IconBox,
@@ -24,7 +22,9 @@ import {
   IconRefresh,
   IconSearch,
   IconSpeakerphone,
+  IconStack2,
   IconTag,
+  IconTagOff,
   IconUser,
   IconX,
   type Icon as TablerIcon,
@@ -46,8 +46,6 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
@@ -76,15 +74,18 @@ import { blankRule, type RuleLevel } from "@/features/rules/types"
 import type { TeamMember } from "@/features/team/types"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { cn } from "@/lib/utils"
+import { AdsPicker } from "@/pages/statistics/ads-picker"
 import {
+  adsSummary,
   countFilters,
   EMPTY_FILTERS,
   matchingAccounts,
+  runnerOf,
   type ReportFilters,
 } from "@/pages/statistics/data"
 import { useDraftFilters } from "@/pages/statistics/draft-filters"
-import { adsTree, TreePicker } from "@/pages/statistics/filter-tree"
 import {
+  AD_ACCOUNTS,
   AD_GROUPS,
   ADS,
   BUYOUT_DEPENDENT_KEYS,
@@ -250,18 +251,20 @@ function entityId(entity: string, i: number): number {
   return 481200734100 + i * 6 // Кампанії
 }
 
-// Who created the row. The demo data carries no author, so a stable hash of the
-// campaign name picks one of the team's buyers (any member when the team has no
-// buyer). Ad groups and ads hash their parent campaign, so everything under one
-// campaign shows the same person.
+// Who created the row: the buyer who runs the cabinet it sits in - the same
+// person the Команда filter in Статистика reads that cabinet for. Ad groups and
+// ads sit in their campaign's cabinet, so everything under one campaign shows
+// the same person. A team with no buyer yet has nobody running cabinets, so a
+// stable hash of the campaign name picks any member instead.
 function authorOf(members: TeamMember[], c: Row): TeamMember | null {
-  const buyers = members.filter((m) => m.role === "buyer")
-  const pool = buyers.length ? buyers : members
-  if (!pool.length) return null
+  const cabinet = AD_ACCOUNTS.find((a) => a.id === c.adAccount)
+  const runner = cabinet ? runnerOf(cabinet.login, members) : null
+  if (runner) return runner
+  if (!members.length) return null
   const key = c.campaign ?? c.name
   let h = 0
   for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) >>> 0
-  return pool[h % pool.length]
+  return members[h % members.length]
 }
 const RATE_KEYS: MetricKey[] = [
   "costPerLead",
@@ -275,36 +278,28 @@ const RATE_KEYS: MetricKey[] = [
   "roi",
   "romi",
 ]
-// "По товарам" groups campaigns by product id (default); "По кампаніям" is the
-// flat list; the rest fan each row out into sub-rows (see BREAKDOWN_VALUES).
-const BREAKDOWN_PRODUCT = "По товарам"
-const BREAKDOWN_CAMPAIGN = "По кампаніям"
-const BREAKDOWNS = [BREAKDOWN_PRODUCT, BREAKDOWN_CAMPAIGN, "По кабінетах"]
-
-// Values each breakdown splits a row into (Ads-Manager style). The first entry
-// ("Без розбивки") means "no breakdown" and is handled specially.
-const BREAKDOWN_VALUES: Record<string, string[]> = {
-  "По кабінетах": ["Кабінет №1", "Кабінет №2", "Кабінет №3"],
+// The table is a list of products - a "shelf" row each, opening on the rows
+// tied to it. Two shelves of their own head the list, named for the level on
+// screen: every row, then the rows no product is tied to, neither by the id in
+// the name nor by hand.
+const ALL_SHELF: Record<string, string> = {
+  Кампанії: "Усі кампанії",
+  "Групи оголошень": "Усі групи оголошень",
+  Оголошення: "Усі оголошення",
 }
-// Additive metrics are divided across breakdown rows; rate metrics (RATE_KEYS)
-// stay unchanged, so every derived ratio remains internally consistent.
-const ADDITIVE_KEYS: MetricKey[] = [
-  "leads",
-  "approves",
-  "spend",
-  "returns",
-  "ccCost",
-  "packaging",
-  "probableIncome",
-  "buyerIncome",
-  "ownerIncome",
-]
-// Deterministic, slightly uneven weights that sum to 1 - rotated per row so not
-// every campaign splits in the exact same proportions.
-function breakdownWeights(n: number, rowSeed: number): number[] {
-  const raw = Array.from({ length: n }, (_, i) => 1 + ((i + rowSeed) % n) * 0.4)
-  const sum = raw.reduce((a, b) => a + b, 0)
-  return raw.map((x) => x / sum)
+const NO_PRODUCT_SHELF: Record<string, string> = {
+  Кампанії: "Кампанії без товару",
+  "Групи оголошень": "Групи без товару",
+  Оголошення: "Оголошення без товару",
+}
+// their keys in the expanded set - a product id is digits, so these can't clash
+const ALL_ID = ":all"
+const NO_PRODUCT_ID = ":none"
+// how a shelf counts the rows under it, by level: 1 / 2-4 / 5 and up
+const ENTITY_FORMS: Record<string, [string, string, string]> = {
+  Кампанії: ["кампанія", "кампанії", "кампаній"],
+  "Групи оголошень": ["група", "групи", "груп"],
+  Оголошення: ["оголошення", "оголошення", "оголошень"],
 }
 
 // --- solid table surface colors ---
@@ -320,20 +315,27 @@ const FROZEN_SEL =
 const HEADER_BG = "bg-[color-mix(in_oklab,var(--muted)_45%,var(--card))]"
 const HEADER_EMPH = "bg-[color-mix(in_oklab,var(--primary)_9%,var(--card))]"
 const FOOTER_BG = "bg-[color-mix(in_oklab,var(--muted)_60%,var(--card))]"
-// right edge of the frozen name column - a hairline that reads as a seam while scrolling
+// right edge of a frozen name column - a hairline that reads as a seam while scrolling
 const FROZEN_EDGE = "shadow-[1px_0_0_0_var(--border)]"
+// A row's bottom line drawn as an inset shadow rather than a border: a shadow
+// takes no height, so a row folded shut under its shelf leaves nothing behind.
+const ROW_LINE = "shadow-[inset_0_-1px_0_0_var(--border)]"
+// ...and both at once, for a frozen name cell of such a row
+const FROZEN_EDGE_LINE =
+  "shadow-[1px_0_0_0_var(--border),inset_0_-1px_0_0_var(--border)]"
+// The Товар column's right edge. Inset, unlike FROZEN_EDGE: the cell after it
+// is frozen too and would paint over a hairline drawn outside this one.
+const PRODUCT_EDGE = "shadow-[inset_-1px_0_0_0_var(--border)]"
+const PRODUCT_EDGE_LINE =
+  "shadow-[inset_-1px_0_0_0_var(--border),inset_0_-1px_0_0_var(--border)]"
 
-// product-group header row - a soft primary tint so it reads as a "shelf" the
-// campaigns sit under; the frozen variant is opaque so scrolled cells can't bleed through
-const GROUP_BG =
-  "bg-[color-mix(in_oklab,var(--primary)_6%,var(--card))] hover:bg-[color-mix(in_oklab,var(--primary)_11%,var(--card))]"
-const GROUP_FROZEN =
-  "bg-[color-mix(in_oklab,var(--primary)_6%,var(--card))] group-hover/row:bg-[color-mix(in_oklab,var(--primary)_11%,var(--card))]"
-// child campaign rows sit on a faint muted wash so the nesting is obvious
-const CHILD_BG =
-  "bg-[color-mix(in_oklab,var(--muted)_28%,var(--card))] hover:bg-[color-mix(in_oklab,var(--muted)_45%,var(--card))]"
-const CHILD_FROZEN =
-  "bg-[color-mix(in_oklab,var(--muted)_28%,var(--card))] group-hover/row:bg-[color-mix(in_oklab,var(--muted)_45%,var(--card))]"
+// A shelf reads like a tab in a list: plain while shut, and once open a neutral
+// wash a step off the rows it holds. The frozen variant is opaque so scrolled
+// cells can't bleed through.
+const OPEN_BG =
+  "bg-[color-mix(in_oklab,var(--muted)_50%,var(--card))] hover:bg-[color-mix(in_oklab,var(--muted)_70%,var(--card))]"
+const OPEN_FROZEN =
+  "bg-[color-mix(in_oklab,var(--muted)_50%,var(--card))] group-hover/row:bg-[color-mix(in_oklab,var(--muted)_70%,var(--card))]"
 
 // ---- manual product links ----
 // A campaign is tied to a product by the id its name starts with. That id can be
@@ -345,15 +347,14 @@ type ProductLinks = Record<string, string | null>
 function linkKey(entity: string, name: string) {
   return entity + ":" + name
 }
-// the product a row belongs to - a manual link wins over the id in the name,
-// and null means the row has no product at all
-function productIdFor(
-  links: ProductLinks,
-  entity: string,
-  name: string
-): string | null {
-  const k = linkKey(entity, name)
-  return k in links ? links[k] : parseProductId(name).id
+// The product a row belongs to: its campaign's. A manual link wins over the id
+// in the campaign's name, and null means no product at all. Ad groups and ads
+// have none of their own - they follow the campaign they sit in, so a row keeps
+// its shelf from one level to the next, a hand-attached product included.
+function productIdFor(links: ProductLinks, row: Row): string | null {
+  const campaign = row.campaign ?? row.name
+  const k = linkKey("Кампанії", campaign)
+  return k in links ? links[k] : parseProductId(campaign).id
 }
 
 // Shelf title for a product id: the catalogue name, or - for an id typed into
@@ -370,9 +371,8 @@ function productLabel(id: string, sampleName: string) {
 // can be done to it; hovering the row just brings it up to full strength.
 const CHIP_ACTION = "size-3.5 shrink-0 opacity-60 group-hover/row:opacity-100"
 
-// The product marker every row carries: the #id chip when the row has a product
-// (same chip as the product shelves), a dashed "Прикріпити товар" slot when it
-// has none. On campaigns the marker is also the button that opens the picker,
+// The product marker every row carries: the #id chip when the row has a
+// product, a dashed "Прикріпити товар" slot when it has none. On campaigns the marker is also the button that opens the picker,
 // with a pencil / plus trailing the label. Ad groups / ads only ever show it
 // read-only: products are attached to campaigns, deeper levels inherit them.
 function ProductControl({
@@ -392,9 +392,10 @@ function ProductControl({
     : null
 
   if (productId === null) {
-    // An empty slot, not an alarm: the missing product is already flagged once
-    // in the strip above the table, so the row only has to offer the fix. The
-    // dashed chip reads as "something goes here" and invites the click.
+    // An empty slot, not an alarm: the campaigns missing a product already have
+    // a shelf of their own at the top of the list, so the row only has to offer
+    // the fix. The dashed chip reads as "something goes here" and invites the
+    // click.
     const cls = cn(
       "shrink-0 gap-1 border-dashed border-border/80 bg-transparent font-normal text-muted-foreground",
       compact && "h-4 px-1.5 text-[10px]",
@@ -414,8 +415,7 @@ function ProductControl({
             }
           />
           <TooltipContent className="max-w-[260px] leading-relaxed">
-            Назва не починається з ID товару - розбивка по товару недоступна.
-            Товар прикріплюється на рівні кампанії.
+            У кампанії немає товару. Товар прикріплюється на рівні кампанії.
           </TooltipContent>
         </Tooltip>
       )
@@ -439,8 +439,8 @@ function ProductControl({
     )
   }
 
-  // The product marker: the same #id chip the product shelves carry, so a row
-  // reads the same whether the id came from its name or was attached by hand.
+  // The product marker: one #id chip, so a row reads the same whether the id
+  // came from its name or was attached by hand.
   // No tooltip - the chip says what it is, the pencil that it can be changed.
   return (
     <Badge
@@ -733,21 +733,18 @@ function RefreshControl({ compact = false }: { compact?: boolean }) {
 }
 
 type SortKey = "name" | "active" | MetricKey
-type Indexed = Row & { _i: number; _breakdown?: string }
+type Indexed = Row & { _i: number }
 
-// One line in the grouped view: a product shelf (2+ campaigns), a single
-// product-tagged campaign, or a campaign with no product id at all.
-type DisplayEntry =
-  | {
-      kind: "group"
-      id: string
-      product: string
-      rows: Indexed[]
-      agg: Record<MetricKey, number>
-      activeCount: number
-    }
-  | { kind: "single"; id: string; row: Indexed }
-  | { kind: "orphan"; row: Indexed }
+// One line of the product list: a product with the campaigns tied to it, or one
+// of the two shelves heading the list (see ALL_SHELF / NO_PRODUCT_SHELF).
+type Shelf = {
+  kind: "all" | "none" | "product"
+  id: string
+  label: string
+  rows: Indexed[]
+  agg: Record<MetricKey, number>
+  activeCount: number
+}
 
 export function CampaignsPage() {
   const allCols = COLUMNS
@@ -773,7 +770,8 @@ export function CampaignsPage() {
   })
   // resizable column widths (name + every metric), remembered in localStorage
   const [colWidths, setColWidths] = useState<Record<string, number>>(() => {
-    const defaults: Record<string, number> = { name: 340 }
+    // the two frozen name columns: Товар, then Кампанія ("name")
+    const defaults: Record<string, number> = { product: 280, name: 340 }
     for (const c of COLUMNS) defaults[c.key] = defaultColWidth(c.label)
     try {
       const saved = localStorage.getItem(COL_WIDTHS_KEY)
@@ -830,14 +828,16 @@ export function CampaignsPage() {
   const [sel, setSel] = useState<Set<number>>(() => new Set())
   const [activeMap, setActiveMap] = useState<Record<string, boolean>>({})
   const [entity, setEntity] = useState("Кампанії")
-  // Реклама - one filter over the whole source hierarchy (платформа ›
-  // бізнес-акаунт › кабінет), the same tree the Статистика panel is cut by.
-  // Empty is "усі": a tier narrows only once something in it is ticked.
+  // Реклама - one filter over the whole source hierarchy (платформа › акаунт ›
+  // кабінет), the same picker the Статистика panel is cut by. It holds
+  // cabinets, and empty is "усі".
   const [ads, setAds] = useState<ReportFilters>(EMPTY_FILTERS)
   const showToggleCol = true
-  // bulk selection is a desktop affordance - on a phone the frozen block has to
-  // stay under ~210px, and rows are opened by tapping their name instead
-  const showSelectCol = !isMobile
+  // The checkbox column is switched off: the table reads as a list of product
+  // tabs now, with no rows to pick. What hangs off a selection - opening the
+  // next level for the picked rows, a rule for them - stays out of the toolbar
+  // with it, since nothing can be picked.
+  const showSelectCol: boolean = false
   const [drill, setDrill] = useState<{ campaigns: string[]; groups: string[] }>(
     {
       campaigns: [],
@@ -848,11 +848,11 @@ export function CampaignsPage() {
     const t = startOfDay(new Date())
     return { from: addDays(t, -6), to: t } // default: останні 7 днів
   })
-  // "Розбивка" is the primary mode selector; "По товарам" groups by product id
-  const [breakdown, setBreakdown] = useState(BREAKDOWN_PRODUCT)
   // display currency for money columns - set once in Налаштування → Загальне,
   // so it stays the same everywhere instead of being a per-table filter
   const { currency } = useCurrency()
+  // the shelves standing open - ALL_ID, NO_PRODUCT_ID or product ids. Kept
+  // across the levels, so a product stays open from its campaigns down to its ads.
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set())
   // products attached to rows by hand - see productIdFor above
   const [productLinks, setProductLinks] = useState<ProductLinks>({})
@@ -866,29 +866,19 @@ export function CampaignsPage() {
   const [ruleSeed, setRuleSeed] = useState<RuleSeed | null>(null)
   const [ruleOpen, setRuleOpen] = useState(false)
 
-  // loading skeletons: a full-page one on first load, and a short table pulse
-  // whenever the breakdown / entity changes so the switch feels "live"
+  // full-page loading skeleton on first load
   const [firstLoad, setFirstLoad] = useState(true)
-  const [switching, setSwitching] = useState(false)
-  const pulseRef = useRef<number | null>(null)
   useEffect(() => {
     const t = window.setTimeout(() => setFirstLoad(false), 750)
     return () => window.clearTimeout(t)
   }, [])
-  function pulse(ms = 450) {
-    setSwitching(true)
-    if (pulseRef.current) window.clearTimeout(pulseRef.current)
-    pulseRef.current = window.setTimeout(() => setSwitching(false), ms)
-  }
 
   const cols = allCols.filter((c) => visible[c.key])
   const isLeaf = entity === "Оголошення"
-  // "По товарам" groups by product id on every level (campaigns / groups / ads)
-  const grouped = breakdown === BREAKDOWN_PRODUCT
 
-  const productIdOf = (c: Row) => productIdFor(productLinks, entity, c.name)
-  // products are attached to campaigns; ad groups and ads inherit the id from
-  // their name, so the picker is only reachable from the campaign level
+  const productIdOf = (c: Row) => productIdFor(productLinks, c)
+  // products are attached to campaigns; ad groups and ads follow their
+  // campaign, so the picker is only reachable from the campaign level
   const canEditProduct = entity === "Кампанії"
   function openProductPicker(c: Row) {
     setPickerTarget({
@@ -906,8 +896,7 @@ export function CampaignsPage() {
     // open the shelf the campaign just joined, so the move is visible
     if (productId) setExpanded((s) => new Set(s).add(productId))
   }
-  // The cabinets the ticked tiers leave standing. A campaign belongs to exactly
-  // one of them, so this one set is what every tier of the filter comes down to.
+  // The cabinets the filter leaves standing - a campaign belongs to exactly one.
   const keptAccounts = useMemo(
     () => new Set(matchingAccounts(ads).map((a) => a.id)),
     [ads]
@@ -938,11 +927,6 @@ export function CampaignsPage() {
     setEntity(e)
     setSel(new Set())
   }
-  function switchBreakdown(b: string) {
-    setBreakdown(b)
-    setSel(new Set())
-    pulse()
-  }
   // A narrower source can hide the rows a selection or a drill-down was made
   // on, so both are dropped whenever the filter lands - from the toolbar's
   // button or from the sheet's.
@@ -951,9 +935,9 @@ export function CampaignsPage() {
     setSel(new Set())
     setDrill({ campaigns: [], groups: [] })
   }
-  // Ticking a cabinet does not rebuild the table - the filter is three tiers
-  // deep, and a set of ticks is only worth re-reading once it is finished.
-  // Застосувати is what hands the draft over.
+  // Ticking a cabinet does not rebuild the table - a set of ticks is only worth
+  // re-reading once it is finished. Застосувати, in the picker or beside it,
+  // is what hands the draft over.
   const adDraft = useDraftFilters(ads, commitAds)
   function clearDrill() {
     setDrill({ campaigns: [], groups: [] })
@@ -978,20 +962,6 @@ export function CampaignsPage() {
       }))
       setEntity("Оголошення")
     }
-    setSel(new Set())
-  }
-  // click a product-group name to open the next level for all its campaigns
-  function drillProduct(e: Extract<DisplayEntry, { kind: "group" }>) {
-    if (entity === "Кампанії") {
-      setDrill({ campaigns: e.rows.map((r) => r.name), groups: [] })
-      setEntity("Групи оголошень")
-    } else if (entity === "Групи оголошень") {
-      const campaigns = Array.from(new Set(e.rows.map((r) => r.campaign ?? "")))
-      setDrill({ campaigns, groups: e.rows.map((r) => r.name) })
-      setEntity("Оголошення")
-    }
-    // keep the same product open on the next level so its rows are visible
-    setExpanded((s) => new Set(s).add(e.id))
     setSel(new Set())
   }
 
@@ -1035,33 +1005,9 @@ export function CampaignsPage() {
         return sort.dir === "asc" ? cmp : -cmp
       })
     }
-    // breakdown: fan every row out into one sub-row per breakdown value
-    const vals = BREAKDOWN_VALUES[breakdown]
-    if (vals?.length) {
-      r = r.flatMap((row, ri) => {
-        const w = breakdownWeights(vals.length, ri)
-        return vals.map((val, vi) => {
-          const sub: Indexed = {
-            ...row,
-            _i: row._i * 100 + vi,
-            _breakdown: val,
-          }
-          for (const k of ADDITIVE_KEYS)
-            sub[k] = Math.round((row[k] as number) * w[vi])
-          return sub
-        })
-      })
-    }
     return r
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [entity, keptAccounts, drill, query, sort, activeMap, breakdown])
-
-  const foot = useMemo(() => totals(rows), [rows])
-  // a total built partly on the base buyout % is a forecast as well
-  const footEstimated = useMemo(
-    () => rows.some((r) => r.buyoutEstimated),
-    [rows]
-  )
+  }, [entity, keptAccounts, drill, query, sort, activeMap])
 
   // share of orders (approves) that can't be synced to a product - orders on
   // campaigns with no product id, minus the ones a manual link resolved
@@ -1078,60 +1024,50 @@ export function CampaignsPage() {
     return total ? Math.round((bad / total) * 100) : 0
   }, [productLinks])
 
-  // Fold the flat, already-filtered/sorted rows into product shelves. Rows keep
-  // their natural order; a product with 2+ campaigns becomes a collapsible
-  // group, a lone product-tagged campaign becomes a "single", and a campaign
-  // with no product at all becomes an "orphan" (warned about, never grouped).
-  // A manual link counts exactly like an id in the name.
-  const entries = useMemo<DisplayEntry[]>(() => {
-    if (!grouped) return []
-    const map = new Map<string, Indexed[]>()
-    const order: Array<{ t: "g"; id: string } | { t: "o"; row: Indexed }> = []
+  // The table is a list of products: a shelf per product, holding the rows tied
+  // to it. Whatever the sort, two shelves head the list: every row, then the
+  // rows with no product. The active sort orders the products by their totals;
+  // the rows inside each shelf keep the order it gave them.
+  const shelves = useMemo<Shelf[]>(() => {
+    if (rows.length === 0) return []
+    const shelf = (
+      kind: Shelf["kind"],
+      id: string,
+      label: string,
+      rs: Indexed[]
+    ): Shelf => ({
+      kind,
+      id,
+      label,
+      rows: rs,
+      agg: totals(rs),
+      activeCount: rs.filter((r) => r.active).length,
+    })
+    const byProduct = new Map<string, Indexed[]>()
+    const noProduct: Indexed[] = []
     for (const r of rows) {
-      const id = productIdFor(productLinks, entity, r.name)
+      const id = productIdFor(productLinks, r)
       if (!id) {
-        order.push({ t: "o", row: r })
+        noProduct.push(r)
         continue
       }
-      const arr = map.get(id)
+      const arr = byProduct.get(id)
       if (arr) arr.push(r)
-      else {
-        map.set(id, [r])
-        order.push({ t: "g", id })
-      }
+      else byProduct.set(id, [r])
     }
-    const list: DisplayEntry[] = order.map((o) => {
-      if (o.t === "o") return { kind: "orphan", row: o.row }
-      const rs = map.get(o.id)!
-      if (rs.length === 1) return { kind: "single", id: o.id, row: rs[0] }
-      return {
-        kind: "group",
-        id: o.id,
-        product: productLabel(o.id, rs[0].name),
-        rows: rs,
-        agg: totals(rs),
-        activeCount: rs.filter((r) => r.active).length,
-      }
-    })
-    // Three tiers, always in this order: product groups first, then lone
-    // product-tagged campaigns, then the no-id campaigns pinned to the bottom.
-    // The active sort only reorders rows *within* each tier.
-    const groupsTier = list.filter((e) => e.kind === "group")
-    const singlesTier = list.filter((e) => e.kind === "single")
-    const orphansTier = list.filter((e) => e.kind === "orphan")
+    const products = Array.from(byProduct, ([id, rs]) =>
+      shelf("product", id, productLabel(id, rs[0].name), rs)
+    )
     if (sort.key) {
       const key = sort.key
       const dir = sort.dir === "asc" ? 1 : -1
-      const val = (e: DisplayEntry): number | string => {
-        if (key === "name")
-          return e.kind === "group"
-            ? e.product.toLowerCase()
-            : parseProductId(e.row.name).rest.toLowerCase()
-        if (key === "active")
-          return e.kind === "group" ? e.activeCount : e.row.active ? 1 : 0
-        return (e.kind === "group" ? e.agg[key] : e.row[key]) as number
-      }
-      const byKey = (a: DisplayEntry, b: DisplayEntry) => {
+      const val = (s: Shelf): number | string =>
+        key === "name"
+          ? s.label.toLowerCase()
+          : key === "active"
+            ? s.activeCount
+            : s.agg[key]
+      products.sort((a, b) => {
         const av = val(a)
         const bv = val(b)
         const cmp =
@@ -1139,21 +1075,30 @@ export function CampaignsPage() {
             ? av.localeCompare(bv as string)
             : av - (bv as number)
         return cmp * dir
-      }
-      groupsTier.sort(byKey)
-      singlesTier.sort(byKey)
-      orphansTier.sort(byKey)
+      })
     }
-    return [...groupsTier, ...singlesTier, ...orphansTier]
-  }, [rows, grouped, sort, productLinks, entity])
+    return [
+      shelf("all", ALL_ID, ALL_SHELF[entity], rows),
+      ...(noProduct.length > 0
+        ? [shelf("none", NO_PRODUCT_ID, NO_PRODUCT_SHELF[entity], noProduct)]
+        : []),
+      ...products,
+    ]
+  }, [rows, sort, productLinks, entity])
 
-  const groupIds = useMemo(
-    () => entries.flatMap((e) => (e.kind === "group" ? [e.id] : [])),
-    [entries]
+  const foot = useMemo(() => totals(rows), [rows])
+  const totalLabel = "Разом · " + rows.length + " " + ENTITY_NOUN[entity]
+  // a total built partly on the base buyout % is a forecast as well
+  const footEstimated = useMemo(
+    () => rows.some((r) => r.buyoutEstimated),
+    [rows]
   )
-  const orphanCount = useMemo(
-    () => entries.reduce((n, e) => n + (e.kind === "orphan" ? 1 : 0), 0),
-    [entries]
+
+  // "Розгорнути все" leaves the all-rows shelf shut - opened, it would list
+  // every row a second time
+  const groupIds = useMemo(
+    () => shelves.flatMap((s) => (s.kind === "all" ? [] : [s.id])),
+    [shelves]
   )
   const allExpanded =
     groupIds.length > 0 && groupIds.every((id) => expanded.has(id))
@@ -1167,8 +1112,9 @@ export function CampaignsPage() {
     })
   }
   function toggleAllExpand() {
-    setExpanded(allExpanded ? new Set() : new Set(groupIds))
+    setExpanded((s) => (allExpanded ? new Set() : new Set([...s, ...groupIds])))
   }
+  // a shelf's checkbox picks every row under it
   function setGroupSel(childIdx: number[], select: boolean) {
     setSel((s) => {
       const n = new Set(s)
@@ -1202,15 +1148,8 @@ export function CampaignsPage() {
   }
 
   const selCount = sel.size
-  // the picked rows as indices into the level's dataset - a breakdown sub-row
-  // carries row._i * 100 + n, so it folds back onto its row
-  const ruleTargets = Array.from(
-    new Set(
-      Array.from(sel, (i) =>
-        BREAKDOWN_VALUES[breakdown] ? Math.floor(i / 100) : i
-      )
-    )
-  )
+  // the picked rows, as indices into the level's dataset
+  const ruleTargets = Array.from(sel)
   function createRule() {
     setRuleSeed({
       rule: {
@@ -1221,25 +1160,13 @@ export function CampaignsPage() {
     })
     setRuleOpen(true)
   }
-  // The one filter's own tree, rebuilt as the ticks above a cabinet change: a
-  // cabinet the picked platforms rule out is still shown, but greyed.
-  const adNodes = useMemo(
-    () =>
-      adsTree(
-        matchingAccounts({ ...adDraft.draft, accounts: [] }).map((a) => a.id)
-      ),
-    [adDraft.draft]
-  )
   const adCount = countFilters(ads)
   const adDraftCount = countFilters(adDraft.draft)
 
   // ---- mobile filter sheet plumbing ----
   const hiddenCols = allCols.length - cols.length
   // how many filters differ from the default - the number on the "Фільтри" pill
-  const activeFilterCount =
-    adCount +
-    (breakdown !== BREAKDOWN_PRODUCT ? 1 : 0) +
-    (hiddenCols > 0 ? 1 : 0)
+  const activeFilterCount = adCount + (hiddenCols > 0 ? 1 : 0)
 
   function applyColumnPreset(groups: ColumnGroup[] | null) {
     setVisible(
@@ -1254,14 +1181,19 @@ export function CampaignsPage() {
   function resetFilters() {
     commitAds({ ...EMPTY_FILTERS })
     applyColumnPreset(null)
-    setBreakdown(BREAKDOWN_PRODUCT)
     setQuery("")
     const t = startOfDay(new Date())
     setDateRange({ from: addDays(t, -6), to: t })
   }
 
+  // Two frozen name columns on a desktop: Товар, then Кампанія. A phone has
+  // room for one, so there a shelf and the rows under it share it, nested.
+  const twoCols = !isMobile
   const colSpan =
-    cols.length + 1 + (showSelectCol ? 1 : 0) + (showToggleCol ? 1 : 0)
+    cols.length +
+    (twoCols ? 2 : 1) +
+    (showSelectCol ? 1 : 0) +
+    (showToggleCol ? 1 : 0)
 
   // Fixed frozen-column widths (px). Keeping them explicit means the sticky `left`
   // offsets can never drift out of sync with the rendered columns, so the frozen
@@ -1270,7 +1202,12 @@ export function CampaignsPage() {
   // on a phone this is the leftmost column, so it needs enough room for "ВКЛ" +
   // the sort arrow to sit centred instead of touching the card edge
   const W_TOGGLE = isMobile ? 56 : 52
-  const toggleLeft = showSelectCol ? W_SELECT : 0
+  // Left to right: select, Товар, ВКЛ, Кампанія. The switch stands past Товар so
+  // that everything of a campaign's own - on/off, name, product mark - starts
+  // one column in, and Товар is left blank under the product it belongs to.
+  const productLeft = showSelectCol ? W_SELECT : 0
+  const productW = colWidths.product
+  const toggleLeft = productLeft + (twoCols ? productW : 0)
   const nameLeft = toggleLeft + (showToggleCol ? W_TOGGLE : 0)
   // On a phone the name column is fixed (resizing needs a mouse) and metric
   // columns shrink to roughly two-and-a-bit per screen - wide enough for the
@@ -1280,31 +1217,27 @@ export function CampaignsPage() {
     isMobile ? mobileColWidth(c.label) : colWidths[c.key]
   // phone density - one notch tighter than the desktop px-3 / py-2 cells
   const cellPad = isMobile ? "px-2 py-1.5" : "px-3"
+  // the same for a cell that folds - there the padding moves inside the fold
+  const foldPad = isMobile ? "px-2 py-1.5" : "px-3 py-2"
   const nameXPad = isMobile ? "pl-2" : "pl-3"
   const rowYPad = isMobile ? "py-1.5" : "py-2"
-  // opaque tone for the frozen cells; child rows get the muted wash
-  const frozenBg = (selected: boolean, child = false) =>
-    selected ? FROZEN_SEL : child ? CHILD_FROZEN : FROZEN_BASE
-  const rowBg = (selected: boolean, child = false) =>
-    selected ? ROW_SEL : child ? CHILD_BG : ROW_HOVER
+  // opaque tone for the frozen cells, and the matching one for the rest of the row
+  const frozenBg = (selected: boolean) => (selected ? FROZEN_SEL : FROZEN_BASE)
+  const rowBg = (selected: boolean) => (selected ? ROW_SEL : ROW_HOVER)
 
-  // ---- a single campaign row (also used for group children / orphans) ----
-  // the full original campaign name is always shown, including the id prefix
-  type RowOpts = {
-    child?: boolean // indented under a product group
-  }
-  function renderRow(c: Indexed, opts: RowOpts = {}) {
+  // ---- a single campaign row ----
+  // The full original campaign name is always shown, including the id prefix.
+  // The row stays in the table while its shelf is shut, folded to no height
+  // (see Fold), so that opening and shutting run as a movement, not a jump.
+  function renderRow(c: Indexed, open: boolean, last: boolean) {
     // without the checkbox column there's no way to change the selection, so a
     // selection carried over from a wider viewport must not tint rows
     const selected = showSelectCol && sel.has(c._i)
-    const child = !!opts.child
     const displayName = c.name
-    // breakdown sub-rows aren't real entities, so they carry no author either
-    const author = c._breakdown ? null : authorOf(members, c)
-    // product state of the row: attach / change / detach lives on this control,
-    // breakdown sub-rows aren't real entities so they don't carry one
+    const author = authorOf(members, c)
+    // product state of the row: attach / change / detach lives on this control
     const pid = productIdOf(c)
-    const productCtl = c._breakdown ? null : (
+    const productCtl = (
       <ProductControl
         productId={pid}
         compact={isMobile}
@@ -1314,48 +1247,68 @@ export function CampaignsPage() {
     return (
       <TableRow
         key={c._i}
-        className={cn("group/row border-0", rowBg(selected, child))}
+        // folded away it must not be reachable by keyboard or screen reader
+        inert={!open}
+        className={cn("group/row border-0", rowBg(selected))}
       >
         {showSelectCol && (
           <TableCell
             className={cn(
-              "sticky left-0 z-20 border-b px-0 text-center",
-              frozenBg(selected, child)
+              "sticky left-0 z-20 p-0 text-center",
+              ROW_LINE,
+              frozenBg(selected)
             )}
             style={{ width: W_SELECT, minWidth: W_SELECT }}
           >
-            <div className="flex justify-center">
+            <Fold open={open} className="flex justify-center py-2">
               <Checkbox
                 checked={selected}
                 onCheckedChange={() => toggleSel(c._i)}
                 aria-label="Обрати рядок"
               />
-            </div>
+            </Fold>
           </TableCell>
+        )}
+        {/* Товар - blank here: the row hangs under its product, and all that
+            is its own starts one column in. No line between the rows either,
+            so the blank reads as one block, closed after the shelf's last. */}
+        {twoCols && (
+          <TableCell
+            className={cn(
+              "sticky z-20 p-0",
+              last ? PRODUCT_EDGE_LINE : PRODUCT_EDGE,
+              frozenBg(selected)
+            )}
+            style={{
+              width: productW,
+              minWidth: productW,
+              maxWidth: productW,
+              left: productLeft,
+            }}
+          />
         )}
         {showToggleCol && (
           <TableCell
             className={cn(
-              "sticky z-20 border-b px-0 text-center",
-              frozenBg(selected, child)
+              "sticky z-20 p-0 text-center",
+              ROW_LINE,
+              frozenBg(selected)
             )}
             style={{ width: W_TOGGLE, minWidth: W_TOGGLE, left: toggleLeft }}
           >
-            <div className="flex justify-center">
+            <Fold open={open} className="flex justify-center py-2">
               <RowSwitch
                 active={c.active}
                 onChange={(val) => setActive(c, val)}
               />
-            </div>
+            </Fold>
           </TableCell>
         )}
         <TableCell
           className={cn(
-            "sticky z-20 overflow-hidden border-b",
-            rowYPad,
-            nameXPad,
-            FROZEN_EDGE,
-            frozenBg(selected, child)
+            "sticky z-20 overflow-hidden p-0",
+            FROZEN_EDGE_LINE,
+            frozenBg(selected)
           )}
           style={{
             width: nameW,
@@ -1364,117 +1317,109 @@ export function CampaignsPage() {
             left: nameLeft,
           }}
         >
-          <div
-            className={cn(
-              "flex min-w-0 gap-1.5",
-              child ? "items-stretch" : "items-center"
-            )}
-          >
-            {child && (
-              <span className="ml-1.5 w-3 shrink-0 self-stretch border-l border-border/60" />
-            )}
+          <Fold open={open} className={cn("pr-2", rowYPad, nameXPad)}>
             <div
               className={cn(
-                "flex min-w-0 flex-col gap-0.5",
-                child && "justify-center"
+                "flex min-w-0 gap-1.5",
+                twoCols ? "items-center" : "items-stretch"
               )}
             >
-              <div className="flex min-w-0 items-center gap-1.5">
-                {c._breakdown ? (
-                  <span className="flex min-w-0 items-center gap-2 font-semibold">
-                    <IconArrowsSplit2 className="size-3.5 shrink-0 text-muted-foreground" />
-                    <span className="truncate">{c._breakdown}</span>
-                  </span>
-                ) : isLeaf ? (
-                  <span className="flex min-w-0 items-center gap-2 font-semibold">
-                    <PlatformBadge id={c.platform} />
-                    <span className="truncate">{displayName}</span>
-                  </span>
-                ) : (
-                  <button
-                    onClick={() => drillRow(c)}
-                    title={
-                      "Відкрити " +
-                      (entity === "Кампанії" ? "групи оголошень" : "оголошення")
-                    }
-                    className={cn(
-                      "flex min-w-0 items-center gap-2 text-primary hover:underline",
-                      child ? "font-medium" : "font-semibold"
-                    )}
-                  >
-                    <PlatformBadge id={c.platform} />
-                    <span className="truncate">{displayName}</span>
-                    <IconChevronDown className="size-3.5 shrink-0 -rotate-90 opacity-55" />
-                  </button>
+              {/* with one name column the row sits nested under its shelf */}
+              {!twoCols && (
+                <span className="ml-1.5 w-3 shrink-0 self-stretch border-l border-border/60" />
+              )}
+              <div
+                className={cn(
+                  "flex min-w-0 flex-col gap-0.5",
+                  !twoCols && "justify-center"
                 )}
-                {/* on a phone the badge would eat the whole 158px name column,
-                    so there it moves down to the subline instead */}
-                {!isMobile && productCtl}
-              </div>
-              <div className="flex min-w-0 items-center gap-1.5 text-[11px] text-muted-foreground">
-                {isMobile && pid === null ? (
-                  // the warning is worth more than the row number here
-                  productCtl
-                ) : c._breakdown ? (
-                  <span className="flex min-w-0 items-center gap-1.5">
-                    <PlatformBadge id={c.platform} size={12} />
-                    <span className="truncate">{c.name}</span>
-                  </span>
-                ) : (
-                  <>
-                    <span className="shrink-0 tabular-nums">
-                      №{entityId(entity, c._i)}
+              >
+                <div className="flex min-w-0 items-center gap-1.5">
+                  {isLeaf ? (
+                    <span className="flex min-w-0 items-center gap-2 font-semibold">
+                      <PlatformBadge id={c.platform} />
+                      <span className="truncate">{displayName}</span>
                     </span>
-                    {/* who made it - the name reads faster than the address in
-                        a list, so the phone drops it (158px of name column) and
-                        the product dialog carries the email instead */}
-                    {!isMobile && author && (
-                      <span className="flex min-w-0 items-center gap-1">
-                        <span aria-hidden className="opacity-40">
-                          ·
-                        </span>
-                        <IconUser className="size-3 shrink-0 opacity-70" />
-                        <span className="truncate" title={author.email}>
-                          {author.name}
-                        </span>
+                  ) : (
+                    <button
+                      onClick={() => drillRow(c)}
+                      title={
+                        "Відкрити " +
+                        (entity === "Кампанії"
+                          ? "групи оголошень"
+                          : "оголошення")
+                      }
+                      className="flex min-w-0 items-center gap-2 font-semibold text-primary hover:underline"
+                    >
+                      <PlatformBadge id={c.platform} />
+                      <span className="truncate">{displayName}</span>
+                      <IconChevronDown className="size-3.5 shrink-0 -rotate-90 opacity-55" />
+                    </button>
+                  )}
+                  {/* on a phone the badge would eat the whole 158px name
+                      column, so there it moves down to the subline instead */}
+                  {!isMobile && productCtl}
+                </div>
+                <div className="flex min-w-0 items-center gap-1.5 text-[11px] text-muted-foreground">
+                  {isMobile && pid === null ? (
+                    // the warning is worth more than the row number here
+                    productCtl
+                  ) : (
+                    <>
+                      <span className="shrink-0 tabular-nums">
+                        №{entityId(entity, c._i)}
                       </span>
-                    )}
-                  </>
-                )}
-                {/* the phone keeps the row number and hangs the tag / edit
-                    control off the end of the same line */}
-                {isMobile && pid !== null && productCtl && (
-                  <span className="ml-auto flex shrink-0">{productCtl}</span>
-                )}
+                      {/* who made it - the name reads faster than the address
+                          in a list, so the phone drops it (158px of name
+                          column) and the product dialog carries the email
+                          instead */}
+                      {!isMobile && author && (
+                        <span className="flex min-w-0 items-center gap-1">
+                          <span aria-hidden className="opacity-40">
+                            ·
+                          </span>
+                          <IconUser className="size-3 shrink-0 opacity-70" />
+                          <span className="truncate" title={author.email}>
+                            {author.name}
+                          </span>
+                        </span>
+                      )}
+                    </>
+                  )}
+                  {/* the phone keeps the row number and hangs the tag / edit
+                      control off the end of the same line */}
+                  {isMobile && pid !== null && (
+                    <span className="ml-auto flex shrink-0">{productCtl}</span>
+                  )}
+                </div>
               </div>
             </div>
-          </div>
+          </Fold>
         </TableCell>
         {cols.map((col) => {
-          const unknown =
-            !c._breakdown &&
-            CRM_KEYS.has(col.key) &&
-            crmUnresolved(c.name, entity)
+          const unknown = CRM_KEYS.has(col.key) && crmUnresolved(c.name, entity)
           return (
             <TableCell
               key={col.key}
               className={cn(
-                "overflow-hidden border-b text-left tabular-nums",
-                cellPad,
+                "overflow-hidden p-0 text-left tabular-nums",
+                ROW_LINE,
                 col.emphasize && "bg-primary/[0.045] font-medium"
               )}
             >
-              {unknown ? (
-                <UnknownCell />
-              ) : (
-                <ValueCell
-                  row={c}
-                  col={col}
-                  cur={currency}
-                  estimated={c.buyoutEstimated && FORECAST_KEYS.has(col.key)}
-                  compact={isMobile}
-                />
-              )}
+              <Fold open={open} className={foldPad}>
+                {unknown ? (
+                  <UnknownCell />
+                ) : (
+                  <ValueCell
+                    row={c}
+                    col={col}
+                    cur={currency}
+                    estimated={c.buyoutEstimated && FORECAST_KEYS.has(col.key)}
+                    compact={isMobile}
+                  />
+                )}
+              </Fold>
             </TableCell>
           )
         })}
@@ -1482,70 +1427,175 @@ export function CampaignsPage() {
     )
   }
 
-  // ---- a product "shelf" header: aggregate metrics + expand/collapse ----
-  // 10 arrangements of the same shelf, chosen from the floating design dock
-  function renderGroupRow(e: Extract<DisplayEntry, { kind: "group" }>) {
+  // ---- a product "shelf": its totals in one row, opening on its campaigns ----
+  // The whole row is the switch - a click anywhere on it opens or shuts it. It
+  // is dressed like a tab in a list: an icon, a name and the count beside it,
+  // plain until it is the open one. The two shelves heading the list wear the
+  // same frame, minus the #ID chip.
+  function renderGroupRow(e: Shelf) {
     const isExp = expanded.has(e.id)
+    const isProduct = e.kind === "product"
     const childIdx = e.rows.map((r) => r._i)
     const allChildSel = childIdx.every((i) => sel.has(i))
     const someChildSel = childIdx.some((i) => sel.has(i))
     const count =
-      e.rows.length +
-      " " +
-      plural(e.rows.length, "кампанія", "кампанії", "кампаній")
+      e.rows.length + " " + plural(e.rows.length, ...ENTITY_FORMS[entity])
+    const frozen = isExp ? OPEN_FROZEN : FROZEN_BASE
 
-    // base frame: box icon (left) · #ID chip + product name · round counter (right)
-    const idChip = (
-      <Badge
-        variant="secondary"
-        className="shrink-0 gap-1 font-mono text-[10px] tracking-tight"
+    const ShelfIcon =
+      e.kind === "all"
+        ? IconStack2
+        : e.kind === "none"
+          ? IconTagOff
+          : IconPackage
+
+    // The shelf's own line: chevron, icon, #ID, name and count. The click is the
+    // row's - the button is what a keyboard lands on.
+    const title = (
+      <button
+        type="button"
+        aria-expanded={isExp}
+        title={isExp ? "Згорнути" : "Розгорнути"}
+        className="flex w-full min-w-0 items-center gap-2 text-left"
       >
-        <IconTag className="size-3" />
-        {e.id}
-      </Badge>
+        <IconChevronRight
+          className={cn(
+            "size-4 shrink-0 text-muted-foreground transition-transform duration-200",
+            isExp && "rotate-90"
+          )}
+        />
+        {/* the icon and the #ID chip are the first things to go when the
+            column shrinks to phone width. The no-product shelf keeps the amber
+            of the sync strip - it is where the unsynced orders come from. */}
+        {!isMobile && (
+          <ShelfIcon
+            className={cn(
+              "size-4 shrink-0 transition-colors",
+              e.kind === "none"
+                ? "text-amber-600 dark:text-amber-400"
+                : isExp
+                  ? "text-primary"
+                  : "text-muted-foreground"
+            )}
+          />
+        )}
+        <span className="flex min-w-0 flex-col gap-0.5">
+          <span className="flex min-w-0 items-center gap-1.5">
+            {!isMobile && isProduct && (
+              <Badge
+                variant="secondary"
+                className="shrink-0 gap-1 font-mono text-[10px] tracking-tight"
+              >
+                <IconTag className="size-3" />
+                {e.id}
+              </Badge>
+            )}
+            <span
+              className={cn(
+                "min-w-0 truncate font-semibold transition-colors",
+                isExp && "text-primary"
+              )}
+              title={e.label}
+            >
+              {e.label}
+            </span>
+            {/* the count a tab wears beside its name */}
+            {twoCols && (
+              <span
+                className={cn(
+                  "shrink-0 rounded-full px-1.5 py-0.5 text-[11px] font-semibold tabular-nums transition-colors",
+                  isExp
+                    ? "bg-primary/15 text-primary"
+                    : "bg-muted text-muted-foreground"
+                )}
+                title={count}
+              >
+                {e.rows.length}
+              </span>
+            )}
+          </span>
+          {/* with one name column there is no room for the chip and the count
+              beside the name, so the subline carries one of them */}
+          {!twoCols && (
+            <span className="truncate text-[11px] text-muted-foreground">
+              {isProduct ? "ID " + e.id : count}
+            </span>
+          )}
+        </span>
+      </button>
     )
-    const iconBox = (
-      <span className="grid size-6 shrink-0 place-items-center rounded-md bg-primary/12 text-primary">
-        <IconPackage className="size-3.5" />
-      </span>
-    )
-    const countBadge = (
+
+    // the bar an active tab carries, down the row's leading edge
+    const mark = (
       <span
-        className="ml-auto grid size-6 shrink-0 place-items-center rounded-full bg-primary/12 text-[11px] font-bold text-primary tabular-nums"
-        title={count}
-      >
-        {e.rows.length}
-      </span>
+        aria-hidden
+        className={cn(
+          "absolute inset-y-0 left-0 w-0.5 bg-primary transition-opacity duration-200",
+          isExp ? "opacity-100" : "opacity-0"
+        )}
+      />
     )
 
     return (
-      <TableRow className={cn("group/row border-0", GROUP_BG)}>
+      <TableRow
+        onClick={() => toggleExpand(e.id)}
+        className={cn(
+          "group/row cursor-pointer border-0",
+          isExp ? OPEN_BG : ROW_HOVER
+        )}
+      >
         {showSelectCol && (
           <TableCell
             className={cn(
               "sticky left-0 z-20 border-b px-0 text-center",
-              GROUP_FROZEN
+              frozen
             )}
             style={{ width: W_SELECT, minWidth: W_SELECT }}
+            // picking the rows under a shelf is not opening it
+            onClick={(ev) => ev.stopPropagation()}
           >
             <div className="flex justify-center">
               <Checkbox
                 checked={allChildSel}
                 indeterminate={someChildSel && !allChildSel}
                 onCheckedChange={() => setGroupSel(childIdx, !allChildSel)}
-                aria-label={"Обрати всі кампанії товару " + e.product}
+                aria-label={
+                  isProduct
+                    ? "Обрати всі кампанії товару " + e.label
+                    : "Обрати " + e.label.toLowerCase()
+                }
               />
             </div>
           </TableCell>
         )}
-        {showToggleCol && (
+        {/* Товар - the shelf itself */}
+        {twoCols && (
           <TableCell
             className={cn(
-              "sticky z-20 border-b px-0 text-center",
-              GROUP_FROZEN
+              "sticky z-20 overflow-hidden border-b",
+              rowYPad,
+              nameXPad,
+              PRODUCT_EDGE,
+              frozen
             )}
+            style={{
+              width: productW,
+              minWidth: productW,
+              maxWidth: productW,
+              left: productLeft,
+            }}
+          >
+            {mark}
+            {title}
+          </TableCell>
+        )}
+        {showToggleCol && (
+          <TableCell
+            className={cn("sticky z-20 border-b px-0 text-center", frozen)}
             style={{ width: W_TOGGLE, minWidth: W_TOGGLE, left: toggleLeft }}
           >
+            {/* on a phone this is the row's leading cell */}
+            {!twoCols && mark}
             <span
               className="inline-flex items-center rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground tabular-nums"
               title={e.activeCount + " з " + e.rows.length + " активні"}
@@ -1554,12 +1604,15 @@ export function CampaignsPage() {
             </span>
           </TableCell>
         )}
+        {/* Кампанія - a shelf is not one, so the cell stays blank. With one
+            name column this is where the shelf itself goes. */}
         <TableCell
           className={cn(
-            "sticky z-20 overflow-hidden border-b pl-2",
+            "sticky z-20 overflow-hidden border-b",
             rowYPad,
+            nameXPad,
             FROZEN_EDGE,
-            GROUP_FROZEN
+            frozen
           )}
           style={{
             width: nameW,
@@ -1568,55 +1621,7 @@ export function CampaignsPage() {
             left: nameLeft,
           }}
         >
-          <div className="flex w-full min-w-0 items-center gap-2">
-            {/* chevron + icon toggle expand/collapse */}
-            <button
-              onClick={() => toggleExpand(e.id)}
-              className={cn(
-                "flex shrink-0 items-center",
-                isMobile ? "-mx-0.5" : "gap-2"
-              )}
-              title={isExp ? "Згорнути товар" : "Розгорнути товар"}
-            >
-              <IconChevronRight
-                className={cn(
-                  "size-4 shrink-0 text-muted-foreground transition-transform",
-                  isExp && "rotate-90"
-                )}
-              />
-              {/* the box icon and the round counter are the first things to go
-                  when the frozen column shrinks to phone width */}
-              {!isMobile && iconBox}
-            </button>
-            <span className="flex min-w-0 flex-col gap-0.5">
-              <span className="flex min-w-0 items-center gap-1.5">
-                {!isMobile && idChip}
-                {isLeaf ? (
-                  <span className="min-w-0 truncate font-semibold">
-                    {e.product}
-                  </span>
-                ) : (
-                  <button
-                    onClick={() => drillProduct(e)}
-                    title={
-                      "Відкрити " +
-                      (entity === "Кампанії" ? "групи оголошень" : "оголошення")
-                    }
-                    className="flex min-w-0 items-center gap-1 font-semibold text-primary hover:underline"
-                  >
-                    <span className="min-w-0 truncate">{e.product}</span>
-                    <IconChevronDown className="size-3.5 shrink-0 -rotate-90 opacity-55" />
-                  </button>
-                )}
-              </span>
-              {/* on a phone the ВКЛ column already reads "2/3", so the subline
-                  only has to carry the product id */}
-              <span className="truncate text-[11px] text-muted-foreground">
-                {isMobile ? "ID " + e.id : `${e.activeCount} активних`}
-              </span>
-            </span>
-            {!isMobile && countBadge}
-          </div>
+          {!twoCols && title}
         </TableCell>
         {cols.map((col) => (
           <TableCell
@@ -1624,7 +1629,7 @@ export function CampaignsPage() {
             className={cn(
               "overflow-hidden border-b text-left font-semibold tabular-nums",
               cellPad,
-              col.emphasize && "bg-primary/[0.06]"
+              col.emphasize && "bg-primary/[0.045]"
             )}
           >
             <ValueCell
@@ -1638,119 +1643,6 @@ export function CampaignsPage() {
                 FORECAST_KEYS.has(col.key)
               }
               compact={isMobile}
-            />
-          </TableCell>
-        ))}
-      </TableRow>
-    )
-  }
-
-  // ---- section header row ("По товарам" / "По кампаніям") ----
-  // the label lives in the frozen name column so it stays visible while scrolling
-  function renderDivider(
-    key: string,
-    Icon: TablerIcon,
-    label: string,
-    n: number
-  ) {
-    return (
-      <TableRow key={key} className="hover:bg-transparent">
-        {showSelectCol && (
-          <TableCell
-            className={cn("sticky left-0 z-20 border-y", FOOTER_BG)}
-            style={{ width: W_SELECT, minWidth: W_SELECT }}
-          />
-        )}
-        {showToggleCol && (
-          <TableCell
-            className={cn("sticky z-20 border-y", FOOTER_BG)}
-            style={{ width: W_TOGGLE, minWidth: W_TOGGLE, left: toggleLeft }}
-          />
-        )}
-        <TableCell
-          className={cn(
-            "sticky z-20 overflow-hidden border-y py-1.5",
-            nameXPad,
-            FROZEN_EDGE,
-            FOOTER_BG
-          )}
-          style={{
-            width: nameW,
-            minWidth: nameW,
-            maxWidth: nameW,
-            left: nameLeft,
-          }}
-        >
-          <span className="flex items-center gap-1.5 text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
-            <Icon className="size-3.5 shrink-0" />
-            {label}
-            <Badge variant="secondary" className="text-[10px] tabular-nums">
-              {n}
-            </Badge>
-          </span>
-        </TableCell>
-        {cols.map((col) => (
-          <TableCell key={col.key} className={cn("border-y", FOOTER_BG)} />
-        ))}
-      </TableRow>
-    )
-  }
-
-  // ---- skeleton row (shown while the breakdown / entity is switching) ----
-  function renderSkeletonRow(i: number) {
-    return (
-      <TableRow key={"sk" + i} className="hover:bg-transparent">
-        {showSelectCol && (
-          <TableCell
-            className={cn("sticky left-0 z-20 border-b", FROZEN_BASE)}
-            style={{ width: W_SELECT, minWidth: W_SELECT }}
-          >
-            <div className="flex justify-center">
-              <Skeleton className="size-[18px] rounded-[5px]" />
-            </div>
-          </TableCell>
-        )}
-        {showToggleCol && (
-          <TableCell
-            className={cn("sticky z-20 border-b", FROZEN_BASE)}
-            style={{ width: W_TOGGLE, minWidth: W_TOGGLE, left: toggleLeft }}
-          >
-            <div className="flex justify-center">
-              <Skeleton className="h-[18px] w-8 rounded-full" />
-            </div>
-          </TableCell>
-        )}
-        <TableCell
-          className={cn(
-            "sticky z-20 overflow-hidden border-b",
-            rowYPad,
-            nameXPad,
-            FROZEN_EDGE,
-            FROZEN_BASE
-          )}
-          style={{
-            width: nameW,
-            minWidth: nameW,
-            maxWidth: nameW,
-            left: nameLeft,
-          }}
-        >
-          <div className="flex items-center gap-2">
-            <Skeleton className="size-6 shrink-0 rounded-md" />
-            <div className="flex flex-col gap-1.5">
-              <Skeleton
-                className="h-3.5 w-40"
-                style={{ width: 120 + ((i * 37) % 90) }}
-              />
-              <Skeleton className="h-2.5 w-24" />
-            </div>
-          </div>
-        </TableCell>
-        {cols.map((col) => (
-          <TableCell key={col.key} className={cn("border-b", cellPad)}>
-            <Skeleton
-              className="h-4"
-              style={{ width: 32 + ((i * 19 + col.key.length * 7) % 28) }}
             />
           </TableCell>
         ))}
@@ -1838,13 +1730,17 @@ export function CampaignsPage() {
             on a phone it lives in the filter sheet */}
         {!isMobile && (
           <div className="flex flex-wrap items-center gap-x-2 gap-y-2 border-b p-3.5">
-            <TreePicker
+            <AdsPicker
               label="Реклама"
               variant="outline"
               className="h-8 w-64"
-              nodes={adNodes}
-              filters={adDraft.draft}
-              onFilters={adDraft.setDraft}
+              value={adDraft.draft.accounts}
+              onChange={(accounts) =>
+                adDraft.setDraft({ ...adDraft.draft, accounts })
+              }
+              onApply={() => {
+                if (adDraft.dirty) adDraft.apply()
+              }}
             />
             {/* Dead until the draft says something the table is not already
                 built from - there is nothing to apply until then. */}
@@ -1936,8 +1832,7 @@ export function CampaignsPage() {
             >
               {[
                 rangeLabel(dateRange, startOfDay(new Date())),
-                breakdown,
-                adCount > 0 ? "Реклама: " + adCount : null,
+                adCount > 0 ? "Реклама: " + adsSummary(ads.accounts) : null,
               ]
                 .filter(Boolean)
                 .map((label, i) => (
@@ -2035,37 +1930,8 @@ export function CampaignsPage() {
             "Фільтри" row above */}
         {!isMobile && (
           <div className="flex flex-wrap items-center gap-2.5 border-b p-3.5">
-            {/* Розбивка - primary mode selector, where the status tabs used to be */}
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                render={
-                  <Button variant="outline" size="sm">
-                    <IconArrowsSplit2 />
-                    <span className="text-muted-foreground">Розбивка:</span>
-                    <span className="font-semibold">{breakdown}</span>
-                    <IconChevronDown className="text-muted-foreground" />
-                  </Button>
-                }
-              />
-              <DropdownMenuContent align="start">
-                <DropdownMenuLabel className="tracking-wide uppercase">
-                  Розбивка
-                </DropdownMenuLabel>
-                <DropdownMenuRadioGroup
-                  value={breakdown}
-                  onValueChange={switchBreakdown}
-                >
-                  {BREAKDOWNS.map((b) => (
-                    <DropdownMenuRadioItem key={b} value={b} closeOnClick>
-                      {b}
-                    </DropdownMenuRadioItem>
-                  ))}
-                </DropdownMenuRadioGroup>
-              </DropdownMenuContent>
-            </DropdownMenu>
-
-            {/* expand / collapse all product groups */}
-            {grouped && groupIds.length > 0 && (
+            {/* expand / collapse all product shelves */}
+            {groupIds.length > 0 && (
               <Button
                 variant="outline"
                 size="sm"
@@ -2222,28 +2088,6 @@ export function CampaignsPage() {
           </div>
         )}
 
-        {/* heads-up: campaigns that can't be grouped because their name has no
-            product id up front. Without a plan the table behind it is held back
-            anyway, so the warning has nothing to point at - the "no active plan"
-            strip is the only notice that state should carry. */}
-        {!noPlan && grouped && entity === "Кампанії" && orphanCount > 0 && (
-          <div className="flex items-start gap-2 border-b bg-amber-500/[0.07] px-3.5 py-2 text-xs text-amber-700 dark:bg-amber-400/[0.07] dark:text-amber-400">
-            <IconAlertTriangle className="mt-0.5 size-4 shrink-0" />
-            <span className="min-w-0">
-              <b className="font-semibold">{orphanCount}</b>{" "}
-              {plural(orphanCount, "кампанія", "кампанії", "кампаній")} без ID у
-              назві - розбивка по товару для них недоступна. Прикріпіть товар
-              кнопкою «Прикріпити товар» у рядку кампанії.{" "}
-              <button
-                type="button"
-                className="font-medium whitespace-nowrap underline underline-offset-2 hover:no-underline"
-              >
-                Читати детальніше
-              </button>
-            </span>
-          </div>
-        )}
-
         {/* table - the only element that scrolls; header row, totals row and the
             left "identity" columns stay frozen just like in Ads Manager */}
         <div className="relative flex min-h-0 flex-1 flex-col">
@@ -2280,6 +2124,34 @@ export function CampaignsPage() {
                           aria-label="Обрати всі"
                         />
                       </div>
+                    </TableHead>
+                  )}
+                  {/* Товар and Кампанія sort as one: by name, the shelves
+                        by theirs and the rows under them by their own */}
+                  {twoCols && (
+                    <TableHead
+                      className={cn(
+                        "sticky top-0 z-40 cursor-pointer overflow-hidden border-b",
+                        nameXPad,
+                        PRODUCT_EDGE,
+                        HEADER_BG
+                      )}
+                      style={{
+                        width: productW,
+                        minWidth: productW,
+                        left: productLeft,
+                      }}
+                      onClick={() => toggleSort("name")}
+                    >
+                      <span className="flex items-center gap-1 pr-2 select-none">
+                        <span className="truncate">Товар</span>
+                        <SortIndicator
+                          state={sort.key === "name" ? sort.dir : null}
+                        />
+                      </span>
+                      <ResizeHandle
+                        onStart={(e) => startResize("product", e)}
+                      />
                     </TableHead>
                   )}
                   {showToggleCol && (
@@ -2319,7 +2191,7 @@ export function CampaignsPage() {
                   >
                     <span className="flex items-center gap-1 pr-2 select-none">
                       <span className="truncate">
-                        {grouped ? "Товар / Кампанія" : "Кампанія"}
+                        {twoCols ? "Кампанія" : "Товар / Кампанія"}
                       </span>
                       <SortIndicator
                         state={sort.key === "name" ? sort.dir : null}
@@ -2359,62 +2231,29 @@ export function CampaignsPage() {
               </TableHeader>
 
               <TableBody>
-                {switching
-                  ? Array.from({ length: 8 }, (_, i) => renderSkeletonRow(i))
-                  : grouped
-                    ? (() => {
-                        // "По товарам" = everything tied to a product (groups + singles);
-                        // "По кампаніям" = campaigns with no product id (orphans)
-                        const productCount = entries.filter(
-                          (e) => e.kind !== "orphan"
-                        ).length
-                        const orphanTotal = entries.length - productCount
-                        const out: React.ReactNode[] = []
-                        let productHeaderDone = false
-                        let campaignHeaderDone = false
-                        for (const e of entries) {
-                          if (!productHeaderDone && e.kind !== "orphan") {
-                            productHeaderDone = true
-                            out.push(
-                              renderDivider(
-                                "hdr-product",
-                                IconPackage,
-                                "По товарам",
-                                productCount
-                              )
-                            )
-                          }
-                          if (!campaignHeaderDone && e.kind === "orphan") {
-                            campaignHeaderDone = true
-                            out.push(
-                              renderDivider(
-                                "hdr-campaign",
-                                IconSpeakerphone,
-                                "По кампаніям",
-                                orphanTotal
-                              )
-                            )
-                          }
-                          if (e.kind === "orphan") {
-                            out.push(renderRow(e.row))
-                          } else if (e.kind === "single") {
-                            out.push(renderRow(e.row))
-                          } else {
-                            out.push(
-                              <Fragment key={"g:" + e.id}>
-                                {renderGroupRow(e)}
-                                {expanded.has(e.id) &&
-                                  e.rows.map((r) =>
-                                    renderRow(r, { child: true })
-                                  )}
-                              </Fragment>
-                            )
-                          }
-                        }
-                        return out
-                      })()
-                    : rows.map((c) => renderRow(c))}
-                {!switching && rows.length === 0 && (
+                {shelves.map((s, i) => (
+                  <Fragment key={s.id}>
+                    {/* a strip of air before the first product: what stands
+                        above it is not one, and should not read as one */}
+                    {s.kind === "product" &&
+                      shelves[i - 1]?.kind !== "product" && (
+                        <TableRow
+                          aria-hidden
+                          className="border-0 hover:bg-transparent"
+                        >
+                          <TableCell
+                            colSpan={colSpan}
+                            className={cn("h-2.5 border-b p-0", HEADER_BG)}
+                          />
+                        </TableRow>
+                      )}
+                    {renderGroupRow(s)}
+                    {s.rows.map((r, ri) =>
+                      renderRow(r, expanded.has(s.id), ri === s.rows.length - 1)
+                    )}
+                  </Fragment>
+                ))}
+                {rows.length === 0 && (
                   <TableRow className="hover:bg-transparent">
                     <TableCell
                       colSpan={colSpan}
@@ -2426,85 +2265,106 @@ export function CampaignsPage() {
                 )}
               </TableBody>
 
-              <TableFooter className="border-0 bg-transparent">
-                <TableRow className="hover:bg-transparent">
-                  {showSelectCol && (
+              {/* nothing to total in an empty table */}
+              {rows.length > 0 && (
+                <TableFooter className="border-0 bg-transparent">
+                  <TableRow className="hover:bg-transparent">
+                    {showSelectCol && (
+                      <TableCell
+                        className={cn(
+                          "sticky bottom-0 left-0 z-30 border-t",
+                          FOOTER_BG
+                        )}
+                        style={{ width: W_SELECT, minWidth: W_SELECT }}
+                      />
+                    )}
+                    {/* the label sits in the first name column, whichever that is */}
+                    {twoCols && (
+                      <TableCell
+                        className={cn(
+                          "sticky bottom-0 z-30 overflow-hidden border-t font-bold",
+                          nameXPad,
+                          PRODUCT_EDGE,
+                          FOOTER_BG
+                        )}
+                        style={{
+                          width: productW,
+                          minWidth: productW,
+                          left: productLeft,
+                        }}
+                      >
+                        <span className="truncate">{totalLabel}</span>
+                      </TableCell>
+                    )}
+                    {showToggleCol && (
+                      <TableCell
+                        className={cn(
+                          "sticky bottom-0 z-30 border-t",
+                          FOOTER_BG
+                        )}
+                        style={{
+                          width: W_TOGGLE,
+                          minWidth: W_TOGGLE,
+                          left: toggleLeft,
+                        }}
+                      />
+                    )}
                     <TableCell
                       className={cn(
-                        "sticky bottom-0 left-0 z-30 border-t",
+                        "sticky bottom-0 z-30 overflow-hidden border-t font-bold",
+                        nameXPad,
+                        FROZEN_EDGE,
                         FOOTER_BG
                       )}
-                      style={{ width: W_SELECT, minWidth: W_SELECT }}
-                    />
-                  )}
-                  {showToggleCol && (
-                    <TableCell
-                      className={cn("sticky bottom-0 z-30 border-t", FOOTER_BG)}
                       style={{
-                        width: W_TOGGLE,
-                        minWidth: W_TOGGLE,
-                        left: toggleLeft,
+                        width: nameW,
+                        minWidth: nameW,
+                        left: nameLeft,
                       }}
-                    />
-                  )}
-                  <TableCell
-                    className={cn(
-                      "sticky bottom-0 z-30 overflow-hidden border-t font-bold",
-                      nameXPad,
-                      FROZEN_EDGE,
-                      FOOTER_BG
-                    )}
-                    style={{
-                      width: nameW,
-                      minWidth: nameW,
-                      left: nameLeft,
-                    }}
-                  >
-                    <span className="truncate">
-                      Разом · {rows.length}{" "}
-                      {BREAKDOWN_VALUES[breakdown]
-                        ? "рядків"
-                        : ENTITY_NOUN[entity]}
-                    </span>
-                  </TableCell>
-                  {cols.map((col) => {
-                    const est = footEstimated && FORECAST_KEYS.has(col.key)
-                    const value = (
-                      <>
-                        {est && <span className="mr-px opacity-55">~</span>}
-                        {fmt(foot[col.key], col.unit, currency)}
-                      </>
-                    )
-                    const cell = RATE_KEYS.includes(col.key) ? (
-                      <span className="font-medium text-muted-foreground">
-                        сер. {value}
-                      </span>
-                    ) : (
-                      <span className="font-bold">{value}</span>
-                    )
-                    return (
-                      <TableCell
-                        key={col.key}
-                        className={cn(
-                          "sticky bottom-0 z-10 overflow-hidden border-t text-left tabular-nums",
-                          cellPad,
-                          col.emphasize ? HEADER_EMPH : FOOTER_BG
-                        )}
-                      >
-                        {est ? (
-                          <ForecastTooltip>
-                            <span className="underline decoration-dotted decoration-1 underline-offset-4">
-                              {cell}
-                            </span>
-                          </ForecastTooltip>
-                        ) : (
-                          cell
-                        )}
-                      </TableCell>
-                    )
-                  })}
-                </TableRow>
-              </TableFooter>
+                    >
+                      {!twoCols && (
+                        <span className="truncate">{totalLabel}</span>
+                      )}
+                    </TableCell>
+                    {cols.map((col) => {
+                      const est = footEstimated && FORECAST_KEYS.has(col.key)
+                      const value = (
+                        <>
+                          {est && <span className="mr-px opacity-55">~</span>}
+                          {fmt(foot[col.key], col.unit, currency)}
+                        </>
+                      )
+                      const cell = RATE_KEYS.includes(col.key) ? (
+                        <span className="font-medium text-muted-foreground">
+                          сер. {value}
+                        </span>
+                      ) : (
+                        <span className="font-bold">{value}</span>
+                      )
+                      return (
+                        <TableCell
+                          key={col.key}
+                          className={cn(
+                            "sticky bottom-0 z-10 overflow-hidden border-t text-left tabular-nums",
+                            cellPad,
+                            col.emphasize ? HEADER_EMPH : FOOTER_BG
+                          )}
+                        >
+                          {est ? (
+                            <ForecastTooltip>
+                              <span className="underline decoration-dotted decoration-1 underline-offset-4">
+                                {cell}
+                              </span>
+                            </ForecastTooltip>
+                          ) : (
+                            cell
+                          )}
+                        </TableCell>
+                      )
+                    })}
+                  </TableRow>
+                </TableFooter>
+              )}
             </Table>
           </div>
           {noPlan && <NoPlanOverlay onPick={() => setPricingOpen(true)} />}
@@ -2518,9 +2378,6 @@ export function CampaignsPage() {
           onOpenChange={setFiltersOpen}
           dateRange={dateRange}
           onDateRange={setDateRange}
-          breakdown={breakdown}
-          breakdowns={BREAKDOWNS}
-          onBreakdown={switchBreakdown}
           ads={ads}
           onAds={commitAds}
           visible={visible}
@@ -2579,10 +2436,9 @@ function CampaignsSkeleton({ cols }: { cols: number }) {
                 <Skeleton key={i} className="h-5 w-20 shrink-0" />
               ))}
             </div>
-            {/* applied-filter chips */}
+            {/* applied-filter chips - just the period by default */}
             <div className="flex items-center gap-1.5 border-b px-2.5 py-2">
               <Skeleton className="h-4 w-24 shrink-0 rounded-full" />
-              <Skeleton className="h-4 w-20 shrink-0 rounded-full" />
             </div>
           </>
         ) : (
@@ -2603,7 +2459,6 @@ function CampaignsSkeleton({ cols }: { cols: number }) {
             </div>
             {/* action toolbar */}
             <div className="flex items-center gap-2.5 border-b p-3.5">
-              <Skeleton className="h-8 w-44" />
               <Skeleton className="h-8 w-36" />
               <Skeleton className="ml-auto h-8 flex-1" />
               <Skeleton className="h-8 w-24" />
@@ -2615,9 +2470,6 @@ function CampaignsSkeleton({ cols }: { cols: number }) {
         <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden p-2.5 sm:p-3.5">
           {Array.from({ length: 9 }, (_, i) => (
             <div key={i} className="flex items-center gap-2 sm:gap-3">
-              {!isMobile && (
-                <Skeleton className="size-[18px] shrink-0 rounded-[5px]" />
-              )}
               <Skeleton className="h-5 w-8 shrink-0 rounded-full" />
               <Skeleton className="size-6 shrink-0 rounded-md" />
               <Skeleton
@@ -2678,6 +2530,39 @@ function ResizeHandle({ onStart }: { onStart: (e: React.MouseEvent) => void }) {
     >
       <span className="h-1/2 w-px bg-border transition-all group-hover/resize:h-full group-hover/resize:w-0.5 group-hover/resize:bg-primary" />
     </span>
+  )
+}
+
+// The rows under a shelf open and shut by height, and a table row can't be
+// animated itself. So each of its cells keeps its padding inside this wrapper,
+// which folds to nothing: once all of them are folded the row has no height
+// left. The padding sits one level in - on the clipped box itself it would
+// hold the row open.
+function Fold({
+  open,
+  className,
+  children,
+}: {
+  open: boolean
+  className?: string
+  children: React.ReactNode
+}) {
+  return (
+    <div
+      className={cn(
+        "grid transition-[grid-template-rows] duration-200 ease-out motion-reduce:transition-none",
+        open ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+      )}
+    >
+      <div
+        className={cn(
+          "min-h-0 overflow-hidden transition-opacity duration-200 motion-reduce:transition-none",
+          open ? "opacity-100" : "opacity-0"
+        )}
+      >
+        <div className={className}>{children}</div>
+      </div>
+    </div>
   )
 }
 

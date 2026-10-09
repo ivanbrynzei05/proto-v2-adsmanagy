@@ -51,18 +51,20 @@ export type Platform = {
   color: string
 }
 
-export type Portfolio = {
+// One login on the platform - the "account" tier of the API's ads filter, and
+// the same thing Інтеграції lists under each platform. It holds the cabinets.
+export type AdLogin = {
   id: string
   name: string
-  primary?: boolean
+  platform: PlatformId
 }
 
-// A single ad account, which always belongs to one business + one platform.
+// A single ad cabinet, which always sits under one login on one platform.
 export type AdAccount = {
   id: string
   name: string
   platform: PlatformId
-  business: string // Portfolio (business account) id
+  login: string // AdLogin id
 }
 
 // Whether ad spend could be tied to orders/products.
@@ -99,7 +101,6 @@ export type Row = Record<MetricKey, number> & {
   // the product behind this row has no buyout statistics of its own yet, so
   // BASE_BUYOUT_PERCENT stands in and BUYOUT_DEPENDENT_KEYS are forecasts
   buyoutEstimated: boolean
-  portfolio: string // business account id
   platform: PlatformId
   adAccount: string // ad account id
   match: MatchStatus
@@ -142,7 +143,6 @@ type RawCampaign = {
   // data source + product matching (was stored in parallel arrays before)
   platform: PlatformId
   adAccount: string
-  portfolio: string
   match: MatchStatus
   active: boolean
   leads: number
@@ -160,10 +160,10 @@ type RawCampaign = {
   buyerPct: number
 }
 
-// Product catalogue: a campaign whose name starts with one of these ids can be
-// grouped and broken down by product. A campaign whose name has no id can still
-// be tied to a product by hand (the "прикріпити товар" dialog); until it is, the
-// table warns about it instead of grouping it.
+// Product catalogue: a campaign whose name starts with one of these ids sits
+// under its product in the table. A campaign whose name has no id can still be
+// tied to a product by hand (the "прикріпити товар" dialog); until it is, it
+// sits under "Кампанії без товару" instead.
 export const PRODUCTS: Record<string, string> = {
   "1042": "Масажер для шиї Neck Relax",
   "2087": "Робот-пилосос CleanMax X9",
@@ -240,7 +240,7 @@ export function plural(n: number, one: string, few: string, many: string) {
 
 // Pulls the leading product id out of a campaign name, e.g.
 // "1042 - Neck Relax | FB" → { id: "1042", rest: "Neck Relax | FB" }.
-// Names that don't start with an id return { id: null } and get a warning.
+// Names that don't start with an id return { id: null }.
 export function parseProductId(name: string): {
   id: string | null
   rest: string
@@ -251,15 +251,14 @@ export function parseProductId(name: string): {
 }
 
 // raw inputs per campaign (the rest is computed). Several products now carry
-// more than one campaign (same id prefix) so the table can group them; a few
-// have no id prefix on purpose to demo the "no product breakdown" warning.
+// more than one campaign (same id prefix) so a product opens on a few; some
+// have no id prefix on purpose, to fill "Кампанії без товару".
 const RAW: RawCampaign[] = [
   // ── product 1042 · Масажер для шиї Neck Relax - 3 campaigns ──
   {
     name: "1042 - Neck Relax | FB широка",
     platform: "facebook",
     adAccount: "fb_neo",
-    portfolio: "p1",
     match: "ok",
     active: true,
     leads: 920,
@@ -277,7 +276,6 @@ const RAW: RawCampaign[] = [
     name: "1042 - Neck Relax | Google пошук",
     platform: "google",
     adAccount: "g_neo",
-    portfolio: "p1",
     match: "ok",
     active: true,
     leads: 610,
@@ -295,7 +293,6 @@ const RAW: RawCampaign[] = [
     name: "1042 - Neck Relax | TikTok відео",
     platform: "tiktok",
     adAccount: "tt_test",
-    portfolio: "p2",
     match: "ok",
     active: false,
     leads: 310,
@@ -314,7 +311,6 @@ const RAW: RawCampaign[] = [
     name: "2087 - CleanMax X9 | FB ретаргет",
     platform: "facebook",
     adAccount: "fb_neo2",
-    portfolio: "p1",
     match: "ok",
     active: true,
     leads: 720,
@@ -332,7 +328,6 @@ const RAW: RawCampaign[] = [
     name: "2087 - CleanMax X9 | Google",
     platform: "google",
     adAccount: "g_prem",
-    portfolio: "p3",
     match: "ok",
     active: true,
     leads: 600,
@@ -352,7 +347,6 @@ const RAW: RawCampaign[] = [
     name: "3310 - BarberPro | FB широка",
     platform: "facebook",
     adAccount: "fb_neo",
-    portfolio: "p1",
     match: "ok",
     active: true,
     leads: 1400,
@@ -371,7 +365,6 @@ const RAW: RawCampaign[] = [
     name: "3310 - BarberPro | TikTok",
     platform: "tiktok",
     adAccount: "tt_prem",
-    portfolio: "p3",
     match: "ok",
     active: true,
     leads: 1010,
@@ -391,7 +384,6 @@ const RAW: RawCampaign[] = [
     name: "5006 - Корсет для постави PostureFix",
     platform: "facebook",
     adAccount: "fb_neo",
-    portfolio: "p1",
     match: "ok",
     active: true,
     leads: 980,
@@ -409,7 +401,6 @@ const RAW: RawCampaign[] = [
     name: "4120 - Смарт-годинник FitWatch 7",
     platform: "facebook",
     adAccount: "fb_neo",
-    portfolio: "p1",
     match: "ok",
     active: true,
     leads: 1660,
@@ -427,7 +418,6 @@ const RAW: RawCampaign[] = [
     name: "6033 - Набір ножів SharpEdge",
     platform: "google",
     adAccount: "g_test",
-    portfolio: "p2",
     match: "ok",
     active: true,
     leads: 1120,
@@ -445,7 +435,6 @@ const RAW: RawCampaign[] = [
     name: "7008 - Сушарка для взуття DryStep",
     platform: "google",
     adAccount: "g_prem",
-    portfolio: "p3",
     match: "ok",
     active: false,
     leads: 410,
@@ -464,7 +453,6 @@ const RAW: RawCampaign[] = [
     name: "8102 - Органайзер CarTidy",
     platform: "tiktok",
     adAccount: "tt_test",
-    portfolio: "p2",
     match: "ok",
     active: true,
     leads: 880,
@@ -484,7 +472,6 @@ const RAW: RawCampaign[] = [
     name: "Розпродаж тижня - мікс товарів",
     platform: "facebook",
     adAccount: "fb_neo2",
-    portfolio: "p1",
     match: "no_product",
     active: true,
     leads: 1450,
@@ -502,7 +489,6 @@ const RAW: RawCampaign[] = [
     name: "Масажний пістолет PulseGun",
     platform: "google",
     adAccount: "g_prem",
-    portfolio: "p3",
     match: "no_product",
     active: true,
     leads: 1290,
@@ -520,7 +506,6 @@ const RAW: RawCampaign[] = [
     name: "Зволожувач повітря AromaMist",
     platform: "tiktok",
     adAccount: "tt_prem",
-    portfolio: "p3",
     match: "no_product",
     active: false,
     leads: 540,
@@ -611,12 +596,6 @@ function compute(r: RawCampaign): Computed {
   }
 }
 
-// ---- business portfolios (data source) ----
-export const PORTFOLIOS: Portfolio[] = [
-  { id: "p1", name: "Бізнес-акаунт «Основний»", primary: true },
-  { id: "p2", name: "Бізнес-акаунт «Тест-2»" },
-  { id: "p3", name: "Бізнес-акаунт «Преміум»" },
-]
 // ---- ad accounts / platforms (data source) ----
 export const PLATFORMS: Platform[] = [
   { id: "facebook", label: "Facebook", short: "f", color: "#1877F2" },
@@ -624,40 +603,248 @@ export const PLATFORMS: Platform[] = [
   { id: "tiktok", label: "TikTok", short: "T", color: "#EE1D52" },
 ]
 
-// ---- ad accounts (each sits under one business + one platform) ----
-export const AD_ACCOUNTS: AdAccount[] = [
+// ---- logins and the cabinets under them (data source) ----
+// The ads filter's own three tiers, as the API sends them: платформа › акаунт ›
+// кабінет. An owner collects these from every buyer on the team, so the list
+// runs well past what reads as one tree - and the names are the ones buyers
+// really give them: RK1 in one login and RK1 in the next, bare platform ids,
+// the name of whoever the profile belongs to. A cabinet written as [id, name]
+// keeps the id the hand-written campaigns above run in.
+const SOURCES: {
+  id: string
+  name: string
+  platform: PlatformId
+  cabinets: (string | [string, string])[]
+}[] = [
   {
-    id: "fb_neo",
-    name: "Neo Ads · Facebook",
+    id: "fb-neo",
+    name: "Neo Ads",
     platform: "facebook",
-    business: "p1",
+    cabinets: [["fb_neo", "Neo Ads 1"], "Neo Ads 2", "Neo Ads 3"],
   },
   {
-    id: "fb_neo2",
-    name: "Neo Ads · Facebook 2",
+    id: "fb-artem",
+    name: "Artembm2",
     platform: "facebook",
-    business: "p1",
+    cabinets: ["РК 1_N", ["fb_neo2", "РК 2_N"], "РК 4_N", "РК 5_N"],
   },
-  { id: "g_neo", name: "Neo Ads · Google", platform: "google", business: "p1" },
   {
-    id: "g_test",
-    name: "Тест-кабінет · Google",
+    id: "fb-ninok",
+    name: "Ninok",
+    platform: "facebook",
+    cabinets: ["RK1", "RK2", "RK3", "RK4", "RK 5", "Інна Лозова"],
+  },
+  {
+    id: "fb-adspronos",
+    name: "Adspronos",
+    platform: "facebook",
+    cabinets: ["Надія Строкач"],
+  },
+  {
+    id: "fb-passha",
+    name: "passha",
+    platform: "facebook",
+    cabinets: [
+      "1112565533157911",
+      "Алинка Вершинина",
+      "1183353179827194",
+      "633030876030723",
+    ],
+  },
+  {
+    id: "fb-melnyk",
+    name: "Ігор Мельник",
+    platform: "facebook",
+    cabinets: ["Brand Awareness", "Retargeting", "Lookalike Audience"],
+  },
+  {
+    id: "fb-tkachenko",
+    name: "Олена Ткаченко",
+    platform: "facebook",
+    cabinets: ["Winter Sale", "Catalog Ads"],
+  },
+  {
+    id: "fb-kyiv",
+    name: "BM Kyiv 3",
+    platform: "facebook",
+    cabinets: ["KV-01", "KV-02", "KV-03", "KV-04"],
+  },
+  {
+    id: "fb-gnatiuk",
+    name: "Марія Гнатюк",
+    platform: "facebook",
+    cabinets: ["Summer Promo", "Video Views"],
+  },
+  {
+    id: "fb-vlad",
+    name: "Vlad Media Buying",
+    platform: "facebook",
+    cabinets: ["Agency Main", "Agency Test", "Agency Scale"],
+  },
+  {
+    id: "fb-farm7",
+    name: "Farm_UA_07",
+    platform: "facebook",
+    cabinets: ["UA7 · 1", "UA7 · 2"],
+  },
+  {
+    id: "fb-store",
+    name: "Fanpage Store",
+    platform: "facebook",
+    cabinets: ["Store RK 1", "Store RK 2"],
+  },
+  {
+    id: "fb-taras",
+    name: "taras.ads",
+    platform: "facebook",
+    cabinets: ["T-1", "T-2", "T-3"],
+  },
+  {
+    id: "fb-nova",
+    name: "Nova Traffic",
+    platform: "facebook",
+    cabinets: ["NT Main", "NT Backup", "NT Test"],
+  },
+  {
+    id: "fb-king",
+    name: "KingAds_2",
+    platform: "facebook",
+    cabinets: ["K2-1", "K2-2"],
+  },
+  {
+    id: "fb-lviv",
+    name: "BM Lviv",
+    platform: "facebook",
+    cabinets: ["LV-01", "LV-02", "LV-03"],
+  },
+  {
+    id: "fb-rudenko",
+    name: "Оксана Руденко",
+    platform: "facebook",
+    cabinets: ["Оксана 1", "Оксана 2"],
+  },
+  {
+    id: "fb-farm8",
+    name: "Farm_UA_08",
+    platform: "facebook",
+    cabinets: ["UA8 · 1", "UA8 · 2", "UA8 · 3"],
+  },
+  {
+    id: "fb-farm9",
+    name: "Farm_UA_09",
+    platform: "facebook",
+    cabinets: ["UA9 · 1", "UA9 · 2"],
+  },
+  {
+    id: "fb-agency",
+    name: "Agency_Pro",
+    platform: "facebook",
+    cabinets: ["AP-Main", "AP-Scale", "AP-Test", "AP-Old"],
+  },
+  {
+    id: "fb-hryshchenko",
+    name: "Микола Грищенко",
+    platform: "facebook",
+    cabinets: ["Retarget MG", "Broad MG"],
+  },
+  {
+    id: "fb-hub",
+    name: "Sale_Hub",
+    platform: "facebook",
+    cabinets: ["Hub 1", "Hub 2"],
+  },
+  {
+    id: "g-neo",
+    name: "Neo Ads",
     platform: "google",
-    business: "p2",
+    cabinets: [["g_neo", "Neo Search"], "Neo PMax"],
   },
   {
-    id: "tt_test",
-    name: "Тест-кабінет · TikTok",
-    platform: "tiktok",
-    business: "p2",
+    id: "g-prime",
+    name: "Prime",
+    platform: "google",
+    cabinets: [["g_prem", "Prime Search"], "Prime Shopping"],
   },
-  { id: "g_prem", name: "Prime · Google", platform: "google", business: "p3" },
-  { id: "tt_prem", name: "Prime · TikTok", platform: "tiktok", business: "p3" },
+  {
+    id: "g-test",
+    name: "Тест-акаунт",
+    platform: "google",
+    cabinets: [["g_test", "Тест-кабінет"]],
+  },
+  {
+    id: "g-savchuk",
+    name: "Дмитро Савчук",
+    platform: "google",
+    cabinets: ["Shopping"],
+  },
+  {
+    id: "g-bondar",
+    name: "Назар Бондар",
+    platform: "google",
+    cabinets: ["PMax Winter", "Search Generic"],
+  },
+  {
+    id: "g-romaniuk",
+    name: "Софія Романюк",
+    platform: "google",
+    cabinets: ["Brand Search", "Display Remarketing"],
+  },
+  {
+    id: "tt-test",
+    name: "Тест-акаунт",
+    platform: "tiktok",
+    cabinets: [["tt_test", "Тест-кабінет"]],
+  },
+  {
+    id: "tt-prime",
+    name: "Prime",
+    platform: "tiktok",
+    cabinets: [["tt_prem", "Prime TT"], "Prime Spark"],
+  },
+  {
+    id: "tt-kuzmenko",
+    name: "Артем Кузьменко",
+    platform: "tiktok",
+    cabinets: ["UGC Ads", "Old Creatives"],
+  },
+  {
+    id: "tt-savchuk",
+    name: "Дмитро Савчук",
+    platform: "tiktok",
+    cabinets: ["Creative Test"],
+  },
+  {
+    id: "tt-tkachenko",
+    name: "Олена Ткаченко",
+    platform: "tiktok",
+    cabinets: ["Performance Max", "Spark Ads"],
+  },
+  {
+    id: "tt-max",
+    name: "max_tt_ads",
+    platform: "tiktok",
+    cabinets: ["TT-01", "TT-02", "TT-03"],
+  },
 ]
+
+export const AD_LOGINS: AdLogin[] = SOURCES.map(({ id, name, platform }) => ({
+  id,
+  name,
+  platform,
+}))
+
+export const AD_ACCOUNTS: AdAccount[] = SOURCES.flatMap((login) =>
+  login.cabinets.map((cabinet, i) => {
+    const [id, name] =
+      typeof cabinet === "string"
+        ? [login.id + "-" + (i + 1), cabinet]
+        : cabinet
+    return { id, name, platform: login.platform, login: login.id }
+  })
+)
 
 export const CAMPAIGNS: Row[] = RAW.map((r) => ({
   ...compute(r),
-  portfolio: r.portfolio,
   platform: r.platform,
   adAccount: r.adAccount,
   match: r.match,
@@ -702,7 +889,6 @@ RAW.forEach((r, ci) => {
     gRaw.name = prefix + short + " · " + GROUP_LABELS[gi]
     AD_GROUPS.push({
       ...compute(gRaw),
-      portfolio: r.portfolio,
       platform: r.platform,
       adAccount: r.adAccount,
       match: r.match,
@@ -718,7 +904,6 @@ RAW.forEach((r, ci) => {
         AD_LABELS[(gi + ai) % AD_LABELS.length]
       ADS.push({
         ...compute(aRaw),
-        portfolio: r.portfolio,
         platform: r.platform,
         adAccount: r.adAccount,
         match: r.match,

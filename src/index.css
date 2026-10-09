@@ -228,3 +228,27 @@
     linear-gradient(#e2e8f014 1px, #0000 1px),
     linear-gradient(90deg, #e2e8f014 1px, #0000 1px);
 }
+
+/* A row of the campaigns table unfolding out of its product line, and folding
+   back into it - see Unfold in pages/campaigns. Each cell's content grows from
+   no height to its own, so the row and everything under it slide along. */
+@keyframes row-unfold {
+  from {
+    grid-template-rows: 0fr;
+    opacity: 0;
+  }
+  to {
+    grid-template-rows: 1fr;
+    opacity: 1;
+  }
+}
+@keyframes row-fold {
+  from {
+    grid-template-rows: 1fr;
+    opacity: 1;
+  }
+  to {
+    grid-template-rows: 0fr;
+    opacity: 0;
+  }
+}

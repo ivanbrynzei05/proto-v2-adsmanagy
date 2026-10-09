@@ -1,7 +1,6 @@
 import { cn } from "@/lib/utils"
 
-// The muted track with the picked option raised on a card - the same control
-// Налаштування → Інтеграції switches its tabs with.
+// The muted track with the picked option raised on a card.
 export function Segmented<T extends string>({
   value,
   options,

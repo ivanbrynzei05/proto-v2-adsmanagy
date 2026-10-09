@@ -6,6 +6,7 @@
 import {
   autoMatchStatus,
   MOCK_CRM_STATUSES,
+  pluralizeKabinet,
   type CallCenter,
   type ConnectedCrm,
   type CrmStatusOption,
@@ -13,11 +14,13 @@ import {
 import { DEFAULT_MEMBERS, type TeamMember } from "@/features/team/types"
 import {
   AD_ACCOUNTS,
+  AD_LOGINS,
   CAMPAIGNS,
   parseProductId,
   PLATFORMS,
   PRODUCTS,
   SETTINGS,
+  type AdAccount,
   type PlatformId,
 } from "@/pages/campaigns/data"
 import {
@@ -1920,8 +1923,11 @@ function trafficShare(filters: ReportFilters, team: TeamMember[]) {
 export type CampaignState = "active" | "paused"
 
 export type ReportFilters = {
-  platforms: PlatformId[]
-  portfolios: string[]
+  /**
+   * Cabinet ids - the leaves of платформа › акаунт › кабінет. A platform or an
+   * account is picked by ticking the cabinets under it, so a cabinet synced
+   * tomorrow does not quietly join a filter set today.
+   */
   accounts: string[]
   /** running or paused, as a campaign's own state */
   states: CampaignState[]
@@ -1940,8 +1946,6 @@ export type ReportFilters = {
 }
 
 export const EMPTY_FILTERS: ReportFilters = {
-  platforms: [],
-  portfolios: [],
   accounts: [],
   states: [],
   products: [],
@@ -1983,13 +1987,23 @@ const passes = (list: string[], value: string) =>
   list.length === 0 || list.includes(value)
 
 /**
- * Which cabinets each member runs.
+ * The buyer who brought a login in - and with it, every cabinet under it.
  *
  * Nothing stores that ownership - Інтеграції only counts how many cabinets a
- * buyer has - so the demo hands them out round robin over the buyers in the
- * team's own order. A buyer past the end of the cabinet list shares one rather
- * than getting none: a picked member with nothing under them would draw a
- * report of zeros, which reads as a broken page rather than as an answer.
+ * buyer has - so the demo deals the logins out round robin over the buyers in
+ * the team's own order. Null on a team with no buyers.
+ */
+export function runnerOf(login: string, team: TeamMember[]) {
+  const buyers = team.filter((m) => m.role === "buyer")
+  const n = AD_LOGINS.findIndex((l) => l.id === login)
+  return buyers.length && n >= 0 ? buyers[n % buyers.length] : null
+}
+
+/**
+ * Which cabinets each member runs: the ones on the logins runnerOf deals them.
+ * A buyer past the end of the login list shares one rather than getting none:
+ * a picked member with nothing under them would draw a report of zeros, which
+ * reads as a broken page rather than as an answer.
  *
  * A lead owns no traffic of their own; what they answer for is their buyers',
  * so picking a lead is picking that group. A lead with no buyers yet is the one
@@ -2000,12 +2014,13 @@ function accountsByMember(team: TeamMember[]) {
   const owned = new Map<string, string[]>()
 
   buyers.forEach((buyer, i) => {
-    const mine = AD_ACCOUNTS.filter((_, n) => n % buyers.length === i).map(
-      (a) => a.id
-    )
+    const logins = AD_LOGINS.filter((_, n) => n % buyers.length === i)
+    const mine = logins.length ? logins : [AD_LOGINS[i % AD_LOGINS.length]]
     owned.set(
       buyer.id,
-      mine.length ? mine : [AD_ACCOUNTS[i % AD_ACCOUNTS.length].id]
+      AD_ACCOUNTS.filter((a) => mine.some((l) => l.id === a.login)).map(
+        (a) => a.id
+      )
     )
   })
 
@@ -2029,8 +2044,7 @@ export function accountsOfMembers(ids: string[], team: TeamMember[]) {
 }
 
 // The cabinets a report is built from, and the same predicate the picker uses
-// to grey out cabinets that no longer fit the platforms above them - or the
-// people it is being read for.
+// to grey out cabinets that do not belong to the people it is being read for.
 export function matchingAccounts(
   filters: ReportFilters,
   team: TeamMember[] = DEFAULT_MEMBERS
@@ -2042,12 +2056,35 @@ export function matchingAccounts(
     : null
 
   return AD_ACCOUNTS.filter(
-    (a) =>
-      passes(filters.platforms, a.platform) &&
-      passes(filters.portfolios, a.business) &&
-      passes(filters.accounts, a.id) &&
-      (!scope || scope.has(a.id))
+    (a) => passes(filters.accounts, a.id) && (!scope || scope.has(a.id))
   )
+}
+
+/**
+ * The picked cabinets in a word, said the way they were most likely picked: a
+ * cabinet by its own name, a whole account by its name, a whole platform by
+ * its label - and a count when it is none of those. Never a person: the filter
+ * reads the same for a buyer, who does not see the team.
+ */
+export function adsSummary(ids: string[]) {
+  if (ids.length === 0) return "усі"
+  const picked = new Set(ids)
+  const same = (cabinets: AdAccount[]) =>
+    cabinets.length === picked.size && cabinets.every((c) => picked.has(c.id))
+
+  if (ids.length === 1) {
+    const cabinet = AD_ACCOUNTS.find((c) => c.id === ids[0])
+    if (cabinet) return cabinet.name
+  }
+  const login = AD_LOGINS.find((l) =>
+    same(AD_ACCOUNTS.filter((c) => c.login === l.id))
+  )
+  if (login) return login.name
+  const platform = PLATFORMS.find((p) =>
+    same(AD_ACCOUNTS.filter((c) => c.platform === p.id))
+  )
+  if (platform) return platform.label
+  return ids.length + " " + pluralizeKabinet(ids.length)
 }
 
 export type PlatformStat = {

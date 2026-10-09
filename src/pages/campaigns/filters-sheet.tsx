@@ -23,9 +23,9 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { cn } from "@/lib/utils"
-import { matchingAccounts, type ReportFilters } from "@/pages/statistics/data"
+import { AdsPicker } from "@/pages/statistics/ads-picker"
+import { type ReportFilters } from "@/pages/statistics/data"
 import { useDraftFilters } from "@/pages/statistics/draft-filters"
-import { adsTree, TreePicker } from "@/pages/statistics/filter-tree"
 import { COL_GROUPS, COLUMNS, PRESETS, type ColumnGroup } from "./data"
 import { RangePanel } from "./date-range"
 import {
@@ -74,11 +74,7 @@ export type FiltersSheetProps = {
   dateRange: DateRange
   onDateRange: (r: DateRange) => void
 
-  breakdown: string
-  breakdowns: string[]
-  onBreakdown: (b: string) => void
-
-  /** the one Реклама filter - платформа › бізнес-акаунт › кабінет */
+  /** the one Реклама filter - платформа › акаунт › кабінет */
   ads: ReportFilters
   onAds: (f: ReportFilters) => void
 
@@ -90,18 +86,15 @@ export type FiltersSheetProps = {
 }
 
 // Bottom sheet that carries every filter the desktop toolbar spreads across
-// three rows. The period, the breakdown and the columns apply live to the table
-// underneath; the Реклама ticks are a draft the footer button hands over, the
-// same way the toolbar's own Застосувати does.
+// three rows. The period and the columns apply live to the table underneath;
+// the Реклама ticks are a draft the footer button hands over, the same way the
+// toolbar's own Застосувати does.
 export function CampaignFiltersSheet(props: FiltersSheetProps) {
   const {
     open,
     onOpenChange,
     dateRange,
     onDateRange,
-    breakdown,
-    breakdowns,
-    onBreakdown,
     ads,
     onAds,
     visible,
@@ -125,12 +118,6 @@ export function CampaignFiltersSheet(props: FiltersSheetProps) {
   const visibleCount = COLUMNS.filter((c) => visible[c.key]).length
 
   const { draft, setDraft, dirty, apply, revert } = useDraftFilters(ads, onAds)
-  // a cabinet the ticked platforms rule out is still shown, but greyed
-  const adNodes = useMemo(
-    () =>
-      adsTree(matchingAccounts({ ...draft, accounts: [] }).map((a) => a.id)),
-    [draft]
-  )
 
   // every way out of the sheet but the footer button leaves the table as it
   // was, so the ad-source draft goes back with it
@@ -158,7 +145,7 @@ export function CampaignFiltersSheet(props: FiltersSheetProps) {
               Фільтри
             </SheetTitle>
             <SheetDescription className="sr-only">
-              Період, розбивка, джерела даних та стовпці таблиці
+              Період, джерела даних та стовпці таблиці
             </SheetDescription>
             <Button
               variant="ghost"
@@ -229,34 +216,14 @@ export function CampaignFiltersSheet(props: FiltersSheetProps) {
             )}
           </Section>
 
-          {/* breakdown - one choice, so a select */}
-          <Section title="Розбивка">
-            <Select
-              value={breakdown}
-              onValueChange={(v) => onBreakdown(v as string)}
-            >
-              <SelectTrigger className="h-11 w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {breakdowns.map((b) => (
-                  <SelectItem key={b} value={b}>
-                    {b}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </Section>
-
-          {/* Реклама - платформа › бізнес-акаунт › кабінет in one picker, the
-              same tree the Статистика panel is cut by */}
+          {/* Реклама - платформа › акаунт › кабінет, the same picker the
+              Статистика panel is cut by; it slides up a sheet of its own */}
           <Section title="Реклама">
-            <TreePicker
+            <AdsPicker
               label="Джерела"
               className="h-11"
-              nodes={adNodes}
-              filters={draft}
-              onFilters={setDraft}
+              value={draft.accounts}
+              onChange={(accounts) => setDraft({ ...draft, accounts })}
             />
           </Section>
 

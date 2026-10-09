@@ -1,12 +1,9 @@
 import {
-  IconAd,
   IconAdjustmentsHorizontal,
   IconCoins,
   IconCreditCard,
-  IconDatabase,
   IconDeviceDesktop,
   IconMoon,
-  IconPlugConnected,
   IconSettings,
   IconSun,
   IconUsers,
@@ -16,27 +13,22 @@ import {
 import { useState } from "react"
 import { useSearchParams } from "react-router-dom"
 
-import { useIntegrations } from "@/components/integrations-provider"
 import { useTheme } from "@/components/theme-provider"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
+import { SectionNav } from "@/components/ui/section-nav"
 import { AdvancedSection } from "@/features/advanced/advanced-section"
 import { BalanceSection } from "@/features/billing/balance-section"
 import { CurrencyControls } from "@/features/currency/currency-controls"
 import { ExpensesSection } from "@/features/expenses/expenses-section"
 import { TeamSection } from "@/features/team/team-section"
-import { AdAccountsStep } from "@/features/integrations/ad-accounts-step"
-import { CrmStep } from "@/features/integrations/crm-step"
-import { countCabinets } from "@/features/integrations/types"
 import { SubscriptionManager } from "@/pages/subscription/subscription"
 import { cn } from "@/lib/utils"
 
 type SectionId =
   | "general"
   | "team"
-  | "sources"
   | "expenses"
   | "advanced"
   | "billing"
@@ -48,7 +40,6 @@ const SECTIONS: {
   icon: Icon
 }[] = [
   { id: "general", label: "Загальне", icon: IconSettings },
-  { id: "sources", label: "Інтеграції", icon: IconPlugConnected },
   { id: "expenses", label: "Витрати", icon: IconCoins },
   { id: "team", label: "Команда", icon: IconUsers },
   { id: "advanced", label: "Розширені", icon: IconAdjustmentsHorizontal },
@@ -57,13 +48,9 @@ const SECTIONS: {
 ]
 
 // Map a `?section=` query value (e.g. from the header billing chip) onto a tab.
-// "integrations" is accepted as an alias so links can use the new name while
-// older `?section=sources` links keep working.
 function sectionFromParam(value: string | null): SectionId {
-  if (value === "integrations") return "sources"
   if (value === "users") return "team"
   if (
-    value === "sources" ||
     value === "general" ||
     value === "team" ||
     value === "expenses" ||
@@ -192,97 +179,6 @@ function GeneralSection() {
   )
 }
 
-// Call centres used to live here, but they're a cost line rather than a data
-// source - they now sit under Витрати.
-type SourceTab = "ads" | "crm"
-
-function SourcesSection() {
-  const {
-    connectedAccounts,
-    setConnectedAccounts,
-    connectedCrms,
-    setConnectedCrms,
-  } = useIntegrations()
-  const [tab, setTab] = useState<SourceTab>("ads")
-
-  const tabs: {
-    id: SourceTab
-    icon: Icon
-    title: string
-    count: number
-  }[] = [
-    {
-      id: "ads",
-      icon: IconAd,
-      title: "Рекламні кабінети",
-      count: countCabinets(connectedAccounts),
-    },
-    {
-      id: "crm",
-      icon: IconDatabase,
-      title: "CRM",
-      count: connectedCrms.length,
-    },
-  ]
-
-  const current = tabs.find((t) => t.id === tab)!
-
-  return (
-    <Card>
-      <CardHeader className="gap-3 border-b">
-        <div className="flex w-fit gap-1 rounded-lg bg-muted p-1">
-          {tabs.map((t) => {
-            const isActive = t.id === tab
-            return (
-              <button
-                key={t.id}
-                type="button"
-                onClick={() => setTab(t.id)}
-                className={cn(
-                  "flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-medium transition-colors [&>svg]:size-4 [&>svg]:shrink-0",
-                  isActive
-                    ? "bg-card text-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                <t.icon />
-                <span className="hidden sm:inline">{t.title}</span>
-                {t.count > 0 && (
-                  <Badge
-                    variant="outline"
-                    className="border-transparent bg-emerald-500/12 text-emerald-600 dark:text-emerald-400"
-                  >
-                    {t.count}
-                  </Badge>
-                )}
-              </button>
-            )
-          })}
-        </div>
-        <CardTitle className="text-[15px] font-bold tracking-tight">
-          {current.title}
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        {tab === "ads" && (
-          <AdAccountsStep
-            connectedAccounts={connectedAccounts}
-            setConnectedAccounts={setConnectedAccounts}
-            animate={false}
-          />
-        )}
-        {tab === "crm" && (
-          <CrmStep
-            connectedCrms={connectedCrms}
-            setConnectedCrms={setConnectedCrms}
-            animate={false}
-          />
-        )}
-      </CardContent>
-    </Card>
-  )
-}
-
 export function SettingsPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const active = sectionFromParam(searchParams.get("section"))
@@ -297,36 +193,11 @@ export function SettingsPage() {
       </div>
 
       <div className="grid gap-4 lg:grid-cols-[240px_1fr]">
-        {/* section nav sits on its own panel, so the left column reads as part
-            of the page furniture rather than loose buttons on the background.
-            On desktop it follows the page down; on narrow screens it scrolls
-            sideways inside the panel. */}
-        <nav className="flex gap-1 overflow-x-auto rounded-xl border bg-card p-1.5 shadow-xs lg:sticky lg:top-18 lg:flex-col lg:self-start lg:overflow-visible">
-          {SECTIONS.map((section) => {
-            const isActive = section.id === active
-            return (
-              <button
-                key={section.id}
-                type="button"
-                onClick={() => setActive(section.id)}
-                className={cn(
-                  "flex h-9 shrink-0 items-center gap-2.5 rounded-md px-2.5 text-sm transition-colors [&>svg]:size-4 [&>svg]:shrink-0",
-                  isActive
-                    ? "bg-muted font-medium text-foreground"
-                    : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
-                )}
-              >
-                <section.icon />
-                {section.label}
-              </button>
-            )
-          })}
-        </nav>
+        <SectionNav items={SECTIONS} value={active} onChange={setActive} />
 
         <div className="min-w-0">
           {active === "general" && <GeneralSection />}
           {active === "team" && <TeamSection />}
-          {active === "sources" && <SourcesSection />}
           {active === "expenses" && <ExpensesSection />}
           {active === "advanced" && <AdvancedSection />}
           {active === "plans" && <SubscriptionManager />}

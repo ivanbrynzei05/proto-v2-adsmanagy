@@ -510,6 +510,38 @@ export const CRM_LOGO_LETTERS: Record<CrmType, string> = {
   "Sales Drive": "SD",
 }
 
+// A chat the bot sends notifications to - someone's own chat with it, or a
+// group it was added to.
+export type TelegramChat = {
+  id: string
+  title: string
+  username?: string
+  kind: "private" | "group"
+}
+
+export const TELEGRAM_BOT = "AdsMetryBot"
+
+// What the bot "sees" once the code is sent: each connect hands out the next
+// chat on the list that isn't connected yet.
+export const MOCK_TELEGRAM_CHATS: TelegramChat[] = [
+  { id: "418223907", title: "Ваньок", username: "vanok", kind: "private" },
+  { id: "-1002231847", title: "Медіабаїнг · звіти", kind: "group" },
+  {
+    id: "593310442",
+    title: "Олег Кравець",
+    username: "oleg_kravets",
+    kind: "private",
+  },
+]
+
+export function pluralizeChat(count: number) {
+  const mod10 = count % 10
+  const mod100 = count % 100
+  if (mod10 === 1 && mod100 !== 11) return "чат"
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) return "чати"
+  return "чатів"
+}
+
 export function pluralizeCallCenter(count: number) {
   const mod10 = count % 10
   const mod100 = count % 100

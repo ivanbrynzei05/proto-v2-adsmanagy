@@ -184,13 +184,13 @@ function initialNotifications(products: LinkedProduct[]): Notification[] {
         {
           type: "ol",
           items: [
-            "Відкрийте **Налаштування → Інтеграції**",
+            "Відкрийте **Інтеграції**",
             "Натисніть **Перепідключити** біля кабінету",
             "Увійдіть у Facebook акаунтом власника кабінету",
           ],
         },
       ],
-      action: { label: "Перепідключити", to: "/settings?section=sources" },
+      action: { label: "Перепідключити", to: "/integrations" },
     },
     {
       id: "low-balance",

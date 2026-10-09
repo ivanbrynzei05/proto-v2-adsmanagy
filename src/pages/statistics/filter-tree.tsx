@@ -22,19 +22,13 @@ import { type CrmType } from "@/features/integrations/types"
 import { type TeamMember } from "@/features/team/types"
 import { cn } from "@/lib/utils"
 import { fmtNum } from "@/pages/dashboard/data"
-import { AD_ACCOUNTS, PLATFORMS, PORTFOLIOS } from "@/pages/campaigns/data"
-import { PlatformBadge } from "@/pages/campaigns/platform-badge"
 import { PRODUCT_OPTIONS, type ReportFilters } from "./data"
 
-/** Which list in the panel's state a node writes to. */
-export type FilterField =
-  | "platforms"
-  | "portfolios"
-  | "accounts"
-  | "products"
-  | "centers"
-  | "crms"
-  | "members"
+/**
+ * Which list in the panel's state a node writes to. The ad cabinets are not
+ * one of them: they have a picker of their own (ads-picker.tsx).
+ */
+export type FilterField = "products" | "centers" | "crms" | "members"
 
 /**
  * One node of a filter category, at any tier — the same shape the API sends as
@@ -400,34 +394,6 @@ export function TreePicker({
 }
 
 // --- the trees themselves -----------------------------------------------------
-
-/** Платформа › Бізнес-акаунт › Кабінет — three tiers, as the API sends them. */
-export function adsTree(reachable: string[]): FilterNode[] {
-  return PLATFORMS.map((platform) => {
-    const mine = AD_ACCOUNTS.filter((a) => a.platform === platform.id)
-    return {
-      id: platform.id,
-      label: platform.label,
-      field: "platforms" as const,
-      icon: <PlatformBadge id={platform.id} size={14} />,
-      children: PORTFOLIOS.filter((p) =>
-        mine.some((a) => a.business === p.id)
-      ).map((portfolio) => ({
-        id: portfolio.id,
-        label: portfolio.name,
-        field: "portfolios" as const,
-        children: mine
-          .filter((a) => a.business === portfolio.id)
-          .map((account) => ({
-            id: account.id,
-            label: account.name,
-            field: "accounts" as const,
-            disabled: !reachable.includes(account.id),
-          })),
-      })),
-    }
-  }).filter((platform) => platform.children.length > 0)
-}
 
 /**
  * The catalogue, one flat list of товари.

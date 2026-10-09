@@ -18,6 +18,7 @@ import { CommentsPage } from "@/pages/comments/comments"
 import { ConnectAdsPage } from "@/pages/connect/connect-ads"
 import { DashboardPage } from "@/pages/dashboard/dashboard"
 import { FaqPage } from "@/pages/help/faq"
+import { IntegrationsPage } from "@/pages/integrations/integrations"
 import { PrivacyPolicyPage } from "@/pages/legal/privacy"
 import { OnboardingPage } from "@/pages/onboarding/onboarding"
 import { RulesPage } from "@/pages/rules/rules"
@@ -59,6 +60,10 @@ export function App() {
                           <Route
                             path="/statistics"
                             element={<StatisticsPage />}
+                          />
+                          <Route
+                            path="/integrations"
+                            element={<IntegrationsPage />}
                           />
                           <Route path="/settings" element={<SettingsPage />} />
                           <Route path="/help/faq" element={<FaqPage />} />

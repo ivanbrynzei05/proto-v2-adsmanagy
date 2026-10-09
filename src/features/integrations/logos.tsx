@@ -77,6 +77,18 @@ export function GoogleLogo({ className }: { className?: string }) {
   )
 }
 
+export function TelegramLogo({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className}>
+      <circle cx="12" cy="12" r="12" fill="#229ED9" />
+      <path
+        fill="#fff"
+        d="M5.4 11.8l11.6-4.5c.5-.2 1 .1.8.9l-2 9.3c-.1.7-.5.8-1.1.5l-3-2.2-1.5 1.4c-.2.2-.3.3-.6.3l.2-3.1 5.6-5c.2-.2 0-.3-.4-.1l-6.9 4.3-3-.9c-.6-.2-.7-.7.3-1.1z"
+      />
+    </svg>
+  )
+}
+
 export function TiktokLogo({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" className={className}>
